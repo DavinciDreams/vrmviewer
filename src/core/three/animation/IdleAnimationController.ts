@@ -128,15 +128,16 @@ export class IdleAnimationController {
     if (!this.state.isRunning) return;
 
     const deltaTime = this.clock.getDelta();
+    const cappedDt = Math.min(deltaTime, 0.1);  // Cap at 100ms to prevent large jumps
 
     // Update breathing
     if (this.state.breathing.enabled) {
-      this.updateBreathing(deltaTime);
+      this.updateBreathing(cappedDt);
     }
 
     // Update blinking
     if (this.state.blinking.enabled) {
-      this.updateBlinking(deltaTime);
+      this.updateBlinking(cappedDt);
     }
   }
 

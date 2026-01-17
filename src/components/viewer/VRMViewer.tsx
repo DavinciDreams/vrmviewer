@@ -3,11 +3,25 @@
  * Main 3D viewer component with animation support
  */
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
 import { useVRMStore } from '../../store/vrmStore';
 import { usePlaybackStore } from '../../store/playbackStore';
+import { useAnimationStore } from '../../store/animationStore';
+import { initializeCameraManager, cameraManager } from '../../core/three/scene/CameraManager';
+import { captureThumbnail } from '../../utils/thumbnailUtils';
+
+/**
+ * VRMViewer imperative handle
+ */
+export interface VRMViewerHandle {
+  toggleVisibility: () => void;
+  toggleWireframe: () => void;
+  isVisible: () => boolean;
+  isWireframe: () => boolean;
+  captureThumbnail: (options?: { size?: number; format?: 'png' | 'jpeg' | 'webp' }) => Promise<string>;
+}
 
 /**
  * VRMViewer props
@@ -21,11 +35,11 @@ export interface VRMViewerProps {
 /**
  * VRMViewer component
  */
-export const VRMViewer: React.FC<VRMViewerProps> = ({
+export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   onCanvasRef,
   onVRMLoaded,
   onAnimationFrame,
-}) => {
+}, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -42,6 +56,87 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
   // Local state
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [error] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState<boolean>(true);
+  const [isWireframe, setIsWireframe] = useState<boolean>(false);
+
+  /**
+   * Apply visibility state to model
+   */
+  useEffect(() => {
+    if (currentModel && sceneRef.current) {
+      currentModel.scene.visible = isVisible;
+    }
+  }, [isVisible, currentModel]);
+
+  /**
+   * Apply wireframe state to model materials
+   */
+  useEffect(() => {
+    if (currentModel && sceneRef.current) {
+      const setWireframeRecursive = (object: THREE.Object3D) => {
+        if (object instanceof THREE.Mesh && object.material) {
+          const material = object.material;
+          if (Array.isArray(material)) {
+            material.forEach(mat => {
+              mat.wireframe = isWireframe;
+              mat.needsUpdate = true;
+            });
+          } else {
+            material.wireframe = isWireframe;
+            material.needsUpdate = true;
+          }
+        }
+        object.children.forEach(child => setWireframeRecursive(child));
+      };
+      setWireframeRecursive(currentModel.scene);
+    }
+  }, [isWireframe, currentModel]);
+
+  /**
+   * Toggle visibility
+   */
+  const toggleVisibility = () => {
+    setIsVisible(prev => !prev);
+  };
+
+  /**
+   * Toggle wireframe
+   */
+  const toggleWireframe = () => {
+    setIsWireframe(prev => !prev);
+  };
+
+  /**
+   * Capture thumbnail
+   */
+  const captureThumbnailMethod = async (options?: { size?: number; format?: 'png' | 'jpeg' | 'webp' }) => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
+      throw new Error('Viewer not initialized');
+    }
+
+    return await captureThumbnail(
+      rendererRef.current,
+      sceneRef.current,
+      cameraRef.current,
+      {
+        size: options?.size || 256,
+        format: options?.format || 'png',
+        quality: 0.9,
+        backgroundColor: '#1a1a2e', // Match scene background
+      }
+    );
+  };
+
+  /**
+   * Expose methods via ref
+   */
+  useImperativeHandle(ref, () => ({
+    toggleVisibility,
+    toggleWireframe,
+    isVisible: () => isVisible,
+    isWireframe: () => isWireframe,
+    captureThumbnail: captureThumbnailMethod,
+  }), [isVisible, isWireframe]);
 
   /**
    * Initialize Three.js scene
@@ -54,28 +149,29 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
     scene.background = new THREE.Color(0x1a1a2e);
     sceneRef.current = scene;
 
-    // Create camera
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      canvasRef.current.clientWidth / canvasRef.current.clientHeight,
-      0.1,
-      1000
-    );
-    camera.position.set(0, 1.5, 3);
-    camera.lookAt(0, 1, 0);
-    cameraRef.current = camera;
+    // Cache canvas dimensions
+    const width = canvasRef.current.clientWidth;
+    const height = canvasRef.current.clientHeight;
 
     // Create renderer
     const renderer = new THREE.WebGLRenderer({
       canvas: canvasRef.current,
-      antialias: true,
+      antialias: false,
       alpha: true,
+      powerPreference: 'high-performance',
     });
-    renderer.setSize(canvasRef.current.clientWidth, canvasRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     rendererRef.current = renderer;
+
+    // Initialize CameraManager with canvas and renderer
+    initializeCameraManager(canvasRef.current, renderer);
+    const camManager = cameraManager;
+    if (camManager) {
+      cameraRef.current = camManager.getCamera();
+    }
 
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -84,20 +180,9 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 10, 7);
     directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.mapSize.width = 1024;
+    directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
-
-    // Handle resize
-    const handleResize = () => {
-      if (!canvasRef.current || !camera || !renderer) return;
-      
-      camera.aspect = canvasRef.current.clientWidth / canvasRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(canvasRef.current.clientWidth, canvasRef.current.clientHeight);
-    };
-
-    window.addEventListener('resize', handleResize);
 
     // Notify parent of canvas ref
     if (onCanvasRef) {
@@ -107,11 +192,13 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
     setIsInitialized(true);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
       }
       renderer.dispose();
+      if (camManager) {
+        camManager.dispose();
+      }
     };
   }, [onCanvasRef]);
 
@@ -147,9 +234,9 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
       const scale = targetHeight / size.y;
       currentModel.scene.scale.setScalar(scale);
 
-      // Notify parent
-      if (onVRMLoaded) {
-        onVRMLoaded(currentModel);
+      // Notify parent (only if VRM object is available)
+      if (onVRMLoaded && currentModel.vrm) {
+        onVRMLoaded(currentModel.vrm);
       }
     }
   }, [currentModel, isInitialized, onVRMLoaded]);
@@ -161,6 +248,17 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
     if (!isInitialized || !rendererRef.current) return;
 
     const animate = () => {
+      // Update orbit controls
+      if (cameraManager) {
+        cameraManager.updateControls();
+      }
+
+      // Update animation managers
+      const { animationManager, blendShapeManager, idleAnimationController } = useAnimationStore.getState();
+      animationManager?.update();
+      blendShapeManager?.update();
+      idleAnimationController?.update();
+
       // Render
       if (rendererRef.current && sceneRef.current && cameraRef.current) {
         rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -181,7 +279,7 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isInitialized, onAnimationFrame]);
+  }, [isInitialized]);
 
   return (
     <div className="relative w-full h-full bg-gray-900">
@@ -253,4 +351,6 @@ export const VRMViewer: React.FC<VRMViewerProps> = ({
       )}
     </div>
   );
-};
+});
+
+VRMViewer.displayName = 'VRMViewer';

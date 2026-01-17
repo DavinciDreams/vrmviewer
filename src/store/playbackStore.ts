@@ -34,6 +34,7 @@ export interface PlaybackState {
   seek: (time: number) => void;
   setSpeed: (speed: number) => void;
   setLoop: (loop: boolean) => void;
+  toggleLoop: () => void;
   setCurrentAnimation: (id: string, name: string) => void;
   clearCurrentAnimation: () => void;
   updateCurrentTime: (time: number) => void;
@@ -96,6 +97,11 @@ export const usePlaybackStore = create<PlaybackState>()(
           set({
             loop,
           }),
+
+        toggleLoop: () =>
+          set((state) => ({
+            loop: !state.loop,
+          })),
 
         setCurrentAnimation: (id: string, name: string) =>
           set({

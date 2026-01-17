@@ -24,7 +24,10 @@ export const DropZone: React.FC<DropZoneProps> = ({
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop: onDropCallback,
     accept: {
-      'model/*': acceptedFormats,
+      'model/gltf+json': ['.gltf'],
+      'model/gltf-binary': ['.glb'],
+      'model/vrml': ['.vrm'],
+      'application/octet-stream': ['.fbx', '.bvh', '.vrma'],
     },
     maxSize,
     disabled,

@@ -77,10 +77,11 @@ export class AnimationManager {
     if (!this.mixer) return;
 
     const dt = deltaTime ?? this.clock.getDelta();
-    this.mixer.update(dt);
+    const cappedDt = Math.min(dt, 0.1);  // Cap at 100ms to prevent large jumps
+    this.mixer.update(cappedDt);
 
     if (this.state.isPlaying && !this.state.isPaused) {
-      this.state.currentTime += dt * this.state.speed;
+      this.state.currentTime += cappedDt * this.state.speed;
       
       // Handle loop
       if (this.currentAnimation) {

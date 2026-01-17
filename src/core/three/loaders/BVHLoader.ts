@@ -249,7 +249,8 @@ export class BVHLoaderWrapper {
 
     // Create scene with skeleton
     const scene = new THREE.Group();
-    scene.add(skeleton);
+    // Skeleton is not an Object3D, so we add bones to the scene instead
+    bones.forEach(bone => scene.add(bone));
 
     return {
       scene,
@@ -287,6 +288,7 @@ export class BVHLoaderWrapper {
         name,
         offset,
         channels,
+        children: [],
         index: 0,
       };
     } else if (type === 'JOINT') {
@@ -304,6 +306,7 @@ export class BVHLoaderWrapper {
         name,
         offset,
         channels,
+        children: [],
         index: 0,
       };
     }
@@ -425,9 +428,9 @@ export class BVHLoaderWrapper {
         values.push(euler.x, euler.y, euler.z);
       }
       
+      // QuaternionKeyframeTrack constructor: (name: string, times: number[], values: number[])
       const track = new THREE.QuaternionKeyframeTrack(
         node.name,
-        THREE.QuaternionKeyframeTrack.DEFAULT_NAMES,
         times,
         values
       );

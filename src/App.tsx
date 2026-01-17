@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
-import { VRMViewer } from './components/viewer/VRMViewer';
+import { VRMViewer, VRMViewerHandle } from './components/viewer/VRMViewer';
 import { ThumbnailCapture } from './components/viewer/ThumbnailCapture';
 import { DropZone } from './components/dragdrop/DropZone';
 import { FilePreview } from './components/dragdrop/FilePreview';
@@ -9,27 +9,37 @@ import { PlaybackControls } from './components/controls/PlaybackControls';
 import { ModelControls } from './components/controls/ModelControls';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
+import { Button } from './components/ui/Button';
 import { useVRM } from './hooks/useVRM';
 import { usePlayback } from './hooks/usePlayback';
 import { useAnimation } from './hooks/useAnimation';
 import { useIdleAnimation } from './hooks/useIdleAnimation';
 import { useBlendShapes } from './hooks/useBlendShapes';
+import { useExport } from './hooks/useExport';
+import { useDatabase } from './hooks/useDatabase';
 import { getFileExtension, getFileTypeFromExtension } from './constants/formats';
 import { generateDescriptiveName, generateUniqueName } from './utils/namingUtils';
 import { bvhLoader } from './core/three/loaders/BVHLoader';
 import { vrmaLoader } from './core/three/loaders/VRMALoader';
+import { cameraManager } from './core/three/scene/CameraManager';
+import { getThumbnailService } from './core/database/services/ThumbnailService';
+import { parseDataUrl } from './utils/thumbnailUtils';
 
 function App() {
   // VRM
-  const { currentModel, isLoading, error, metadata, loadModelFromFile, clearCurrentModel } = useVRM();  
+  const { currentModel, isLoading, error, metadata, loadModelFromFile, clearCurrentModel } = useVRM();
   // Playback
-  const { play, pause, stop, seek, setSpeed, toggleLoop } = usePlayback();  
+  const { play, pause, stop, seek, setSpeed, toggleLoop } = usePlayback();
   // Animation
-  const { currentAnimation, loadFromFile: loadAnimationFromFile, play: playAnimation, pause: pauseAnimation, stop: stopAnimation, setSpeed: setAnimationSpeed } = useAnimation();  
+  const { currentAnimation, loadFromFile: loadAnimationFromFile, play: playAnimation, pause: pauseAnimation, stop: stopAnimation, setSpeed: setAnimationSpeed } = useAnimation();
   // Idle Animation
-  const { start: startIdleAnimation, stop: stopIdleAnimation } = useIdleAnimation();  
+  const { start: startIdleAnimation, stop: stopIdleAnimation } = useIdleAnimation();
   // Blend Shapes
-  const { clearExpression } = useBlendShapes();  
+  const { clearExpression } = useBlendShapes();
+  // Export
+  const { exportVRM, exportVRMA } = useExport();
+  // Database
+  const { isInitialized, animations, models } = useDatabase();
   // UI State
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -37,9 +47,27 @@ function App() {
   const [pendingAnimationFile, setPendingAnimationFile] = useState<File | null>(null);
   const [pendingAnimationClip, setPendingAnimationClip] = useState<import('three').AnimationClip | null>(null);
   
-  // Animation library data (mock for now - will be connected to database later)
-  const [animationLibraryData, setAnimationLibraryData] = useState<Array<{ id: string; name: string; description: string; thumbnail: string; duration: number; createdAt: string }>>([]);
-  const [modelLibraryData, setModelLibraryData] = useState<Array<{ id: string; name: string; description: string; thumbnail: string; createdAt: string }>>([]);
+  // VRM Viewer ref
+  const vrmViewerRef = useRef<VRMViewerHandle>(null);
+  
+  // Model control state
+  const [isModelVisible, setIsModelVisible] = useState(true);
+  const [isModelWireframe, setIsModelWireframe] = useState(false);
+  
+  // Track current model UUID for thumbnail generation
+  const [currentModelUuid, setCurrentModelUuid] = useState<string | null>(null);
+  
+  // Track thumbnail capture state for visual feedback
+  const [isCapturing, setIsCapturing] = useState(false);
+  
+  // Track unsaved model state
+  const [unsavedModelFile, setUnsavedModelFile] = useState<File | null>(null);
+  const [unsavedModelData, setUnsavedModelData] = useState<ArrayBuffer | null>(null);
+  const [unsavedThumbnailData, setUnsavedThumbnailData] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Thumbnail service
+  const thumbnailService = getThumbnailService();
 
   /**
    * Initialize idle animations when model is loaded
@@ -56,13 +84,17 @@ function App() {
    * Handle file drop
    */
   const handleDrop = useCallback(async (files: File[]) => {
+    if (!isInitialized) {
+      console.warn('Database not initialized yet. Please wait...');
+      return;
+    }
     setDroppedFiles((prev) => [...prev, ...files]);
     
     for (const file of files) {
       await handleFileLoad(file);
     }
-  }, []);
-
+  }, [isInitialized]);
+  
   /**
    * Handle file load
    */
@@ -71,24 +103,20 @@ function App() {
     const fileType = getFileTypeFromExtension(extension);
     
     if (fileType === 'model') {
+      // Clear current model and unsaved state before loading new model
+      clearCurrentModel();
+      setCurrentModelUuid(null);
+      setUnsavedModelFile(null);
+      setUnsavedModelData(null);
+      setUnsavedThumbnailData(null);
+      
       // Load model
       const model = await loadModelFromFile(file);
       if (model) {
-        // Save to library
-        const modelName = generateUniqueName(
-          metadata?.name || 'model',
-          modelLibraryData.map(m => m.name)
-        );
-        
-        const modelData = {
-          id: Date.now().toString(),
-          name: modelName,
-          description: '',
-          thumbnail: '',
-          createdAt: new Date().toISOString(),
-        };
-        
-        setModelLibraryData(prev => [...prev, modelData]);
+        // Store unsaved model data
+        const fileData = await file.arrayBuffer();
+        setUnsavedModelFile(file);
+        setUnsavedModelData(fileData);
       }
     } else if (fileType === 'animation') {
       // Load animation
@@ -108,8 +136,113 @@ function App() {
         }
       }
     }
-  }, [loadModelFromFile, metadata, modelLibraryData]);
+  }, [loadModelFromFile, metadata, models]);
 
+  /**
+   * Handle save model (manual save from unsaved state)
+   */
+  const handleSaveModel = useCallback(async () => {
+    if (!unsavedModelFile || !unsavedModelData) {
+      console.warn('No unsaved model to save');
+      return;
+    }
+    
+    try {
+      setIsSaving(true);
+      
+      // Generate unique name
+      const existingNames = (await models.getAll()).data?.map((m: any) => m.name) || [];
+      const modelName = generateUniqueName(
+        metadata?.name || 'model',
+        existingNames
+      );
+      
+      // Save model to database
+      const result = await models.save({
+        name: modelName,
+        displayName: modelName,
+        description: '',
+        category: '',
+        tags: [],
+        format: getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx',
+        version: '1.0',
+        author: '',
+        license: '',
+        thumbnail: '',
+        data: unsavedModelData,
+        size: unsavedModelData.byteLength,
+      });
+      
+      if (!result.success || !result.data) {
+        console.error('Failed to save model:', result.error);
+        return;
+      }
+      
+      const modelUuid = result.data.uuid;
+      setCurrentModelUuid(modelUuid);
+      
+      // Capture and save thumbnail if not already captured
+      if (!unsavedThumbnailData && vrmViewerRef.current) {
+        const thumbnailDataUrl = await vrmViewerRef.current!.captureThumbnail();
+        const { format, data } = parseDataUrl(thumbnailDataUrl);
+        
+        const thumbnailResult = await thumbnailService.saveThumbnail({
+          uuid: crypto.randomUUID(),
+          name: `${modelUuid}_thumbnail`,
+          type: 'model',
+          targetUuid: modelUuid,
+          data,
+          format,
+          width: 256,
+          height: 256,
+          size: data.length,
+          createdAt: new Date(),
+        });
+        
+        if (thumbnailResult.success && thumbnailResult.data) {
+          await models.update(modelUuid, {
+            thumbnail: thumbnailResult.data.uuid,
+          });
+          console.log('Thumbnail saved:', thumbnailResult.data.uuid);
+        }
+      } else if (unsavedThumbnailData) {
+        // Use pre-captured thumbnail
+        const { format, data } = parseDataUrl(unsavedThumbnailData);
+        
+        const thumbnailResult = await thumbnailService.saveThumbnail({
+          uuid: crypto.randomUUID(),
+          name: `${modelUuid}_thumbnail`,
+          type: 'model',
+          targetUuid: modelUuid,
+          data,
+          format,
+          width: 256,
+          height: 256,
+          size: data.length,
+          createdAt: new Date(),
+        });
+        
+        if (thumbnailResult.success && thumbnailResult.data) {
+          await models.update(modelUuid, {
+            thumbnail: thumbnailResult.data.uuid,
+          });
+          console.log('Thumbnail saved:', thumbnailResult.data.uuid);
+        }
+      }
+      
+      // Clear unsaved state
+      setUnsavedModelFile(null);
+      setUnsavedModelData(null);
+      setUnsavedThumbnailData(null);
+      
+      console.log('Model saved:', modelName);
+    } catch (error) {
+      console.error('Failed to save model:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, metadata, models]);
+  
   /**
    * Handle animation save
    */
@@ -120,20 +253,32 @@ function App() {
     const descriptiveName = name || generateDescriptiveName(description);
     
     // Check for conflicts and add number if needed
-    const existingNames = animationLibraryData.map(a => a.name);
+    const existingNames = (await animations.getAll()).data?.map(a => a.name) || [];
     const uniqueName = generateUniqueName(descriptiveName, existingNames);
     
-    // Save animation to library
-    const animationData = {
-      id: Date.now().toString(),
+    // Save animation to database
+    const fileData = await pendingAnimationFile.arrayBuffer();
+    const result = await animations.save({
       name: uniqueName,
+      displayName: uniqueName,
       description: description || '',
-      thumbnail: '',
+      category: '',
+      tags: [],
+      format: getFileExtension(pendingAnimationFile.name) as 'bvh' | 'vrma' | 'gltf' | 'fbx',
       duration: pendingAnimationClip.duration,
-      createdAt: new Date().toISOString(),
-    };
+      fps: 30,
+      frameCount: Math.floor(pendingAnimationClip.duration * 30),
+      author: '',
+      license: '',
+      thumbnail: '',
+      data: fileData,
+      size: fileData.byteLength,
+    });
     
-    setAnimationLibraryData(prev => [...prev, animationData]);
+    if (!result.success) {
+      console.error('Failed to save animation:', result.error);
+      return;
+    }
     
     // Load and play animation
     await loadAnimationFromFile(pendingAnimationFile);
@@ -144,29 +289,107 @@ function App() {
     setPendingAnimationFile(null);
     setPendingAnimationClip(null);
     setIsAnimationEditorOpen(false);
-  }, [pendingAnimationClip, pendingAnimationFile, animationLibraryData, loadAnimationFromFile, playAnimation, play]);
+  }, [pendingAnimationClip, pendingAnimationFile, animations, loadAnimationFromFile, playAnimation, play]);
 
   /**
    * Handle animation play from library
    */
   const handleAnimationPlay = useCallback(async (animationId: string) => {
-    const animation = animationLibraryData.find(a => a.id === animationId);
-    if (animation) {
-      // TODO: Load animation from database
-      console.log('Playing animation:', animation);
+    const result = await animations.getByUuid(animationId);
+    if (result.success && result.data) {
+      const animationRecord = result.data;
+      // Create a File from ArrayBuffer data
+      const file = new File([animationRecord.data], `${animationRecord.name}.${animationRecord.format}`, {
+        type: animationRecord.format === 'bvh' ? 'text/plain' : 'application/octet-stream',
+      });
+      // Load and play animation
+      await loadAnimationFromFile(file);
+      playAnimation();
+      play();
     }
-  }, [animationLibraryData]);
+  }, [animations, loadAnimationFromFile, playAnimation, play]);
+
+  /**
+   * Handle animation delete from library
+   */
+  const handleAnimationDelete = useCallback(async (animationId: string) => {
+    const result = await animations.delete(animationId);
+    if (result.success) {
+      console.log('Animation deleted:', animationId);
+    } else {
+      console.error('Failed to delete animation:', result.error);
+    }
+  }, [animations]);
+
+  /**
+   * Handle animation update from library
+   */
+  const handleAnimationUpdate = useCallback(async (animationId: string, name: string, description: string) => {
+    const result = await animations.getByUuid(animationId);
+    if (result.success && result.data) {
+      const updateResult = await animations.update(animationId, {
+        name,
+        displayName: name,
+        description,
+      });
+      if (!updateResult.success) {
+        console.error('Failed to update animation:', updateResult.error);
+      }
+    }
+  }, [animations]);
 
   /**
    * Handle model load from library
    */
   const handleModelLoad = useCallback(async (modelId: string) => {
-    const model = modelLibraryData.find(m => m.id === modelId);
-    if (model) {
-      // TODO: Load model from database
-      console.log('Loading model:', model);
+    // Clear unsaved state when loading from library
+    setUnsavedModelFile(null);
+    setUnsavedModelData(null);
+    setUnsavedThumbnailData(null);
+    
+    // Set current model UUID to enable thumbnail re-capture
+    setCurrentModelUuid(modelId);
+    
+    const result = await models.getByUuid(modelId);
+    if (result.success && result.data) {
+      const modelRecord = result.data;
+      // Create a File from ArrayBuffer data
+      const file = new File([modelRecord.data], `${modelRecord.name}.${modelRecord.format}`, {
+        type: modelRecord.format === 'vrm' ? 'application/octet-stream' : 'model/gltf-binary',
+      });
+      // Load model
+      await loadModelFromFile(file);
     }
-  }, [modelLibraryData]);
+  }, [models, loadModelFromFile]);
+
+  /**
+   * Handle model delete from library
+   */
+  const handleModelDelete = useCallback(async (modelId: string) => {
+    const result = await models.delete(modelId);
+    if (result.success) {
+      console.log('Model deleted:', modelId);
+    } else {
+      console.error('Failed to delete model:', result.error);
+    }
+  }, [models]);
+
+  /**
+   * Handle model update from library
+   */
+  const handleModelUpdate = useCallback(async (modelId: string, name: string, description: string) => {
+    const result = await models.getByUuid(modelId);
+    if (result.success && result.data) {
+      const updateResult = await models.update(modelId, {
+        name,
+        displayName: name,
+        description,
+      });
+      if (!updateResult.success) {
+        console.error('Failed to update model:', updateResult.error);
+      }
+    }
+  }, [models]);
 
   /**
    * Handle export
@@ -176,26 +399,107 @@ function App() {
     
     try {
       if (options.format === 'vrm') {
-        // TODO: Implement VRM export
-        console.log('Exporting VRM:', options);
+        // Export VRM
+        const result = await exportVRM(currentModel, {
+          format: 'vrm',
+          version: '1.0',
+          metadata: {
+            title: options.name,
+            version: options.version || '1.0',
+            author: options.author || 'Unknown',
+          },
+          quality: options.quality,
+          generateThumbnail: options.includeThumbnail,
+        });
+
+        if (!result.success) {
+          console.error('VRM export failed:', result.error);
+          return;
+        }
+
+        console.log('VRM export successful:', result.data);
       } else if (options.format === 'vrma' && currentAnimation) {
-        // TODO: Implement VRMA export
-        console.log('Exporting VRMA:', options);
+        // Export VRMA
+        const result = await exportVRMA(currentAnimation, {
+          format: 'vrma',
+          animationName: options.name,
+          animationDuration: currentAnimation.duration,
+          animationFPS: 30,
+          metadata: {
+            title: options.name,
+            version: options.version || '1.0',
+            author: options.author || 'Unknown',
+          },
+          quality: options.quality,
+        });
+
+        if (!result.success) {
+          console.error('VRMA export failed:', result.error);
+          return;
+        }
+
+        console.log('VRMA export successful:', result.data);
       }
       
       setIsExportDialogOpen(false);
     } catch (err) {
       console.error('Export failed:', err);
     }
-  }, [currentModel, currentAnimation]);
+  }, [currentModel, currentAnimation, exportVRM, exportVRMA]);
 
   /**
-   * Handle thumbnail capture
+   * Handle thumbnail capture (manual re-capture)
    */
-  const handleThumbnailCapture = useCallback(() => {
-    console.log('Capture thumbnail');
-    // TODO: Implement thumbnail capture
-  }, []);
+  const handleThumbnailCapture = useCallback(async () => {
+    if (!vrmViewerRef.current) {
+      console.warn('No model loaded to capture thumbnail');
+      return;
+    }
+    
+    try {
+      setIsCapturing(true);
+      
+      const thumbnailDataUrl = await vrmViewerRef.current!.captureThumbnail();
+      
+      // If model is saved, update thumbnail in database
+      if (currentModelUuid) {
+        const { format, data } = parseDataUrl(thumbnailDataUrl);
+        
+        // Delete old thumbnail if exists
+        await thumbnailService.deleteThumbnailByTarget(currentModelUuid);
+        
+        // Save new thumbnail
+        const result = await thumbnailService.saveThumbnail({
+          uuid: crypto.randomUUID(),
+          name: `${currentModelUuid}_thumbnail`,
+          type: 'model',
+          targetUuid: currentModelUuid,
+          data,
+          format,
+          width: 256,
+          height: 256,
+          size: data.length,
+          createdAt: new Date(),
+        });
+        
+        if (result.success && result.data) {
+          // Update model record with new thumbnail UUID
+          await models.update(currentModelUuid, {
+            thumbnail: result.data.uuid,
+          });
+          console.log('Thumbnail updated:', result.data.uuid);
+        }
+      } else if (unsavedModelFile) {
+        // If model is unsaved, store thumbnail data for later saving
+        setUnsavedThumbnailData(thumbnailDataUrl);
+        console.log('Thumbnail captured (will be saved when model is saved)');
+      }
+    } catch (error) {
+      console.error('Failed to capture thumbnail:', error);
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [currentModelUuid, unsavedModelFile, models]);
 
   /**
    * Handle play
@@ -244,24 +548,85 @@ function App() {
    * Handle reset camera
    */
   const handleResetCamera = useCallback(() => {
-    // TODO: Implement camera reset
-    console.log('Reset camera');
+    if (cameraManager) {
+      cameraManager.resetCamera();
+    }
+  }, []);
+
+  /**
+   * Handle visibility toggle
+   */
+  const handleVisibilityToggle = useCallback(() => {
+    if (vrmViewerRef.current) {
+      vrmViewerRef.current.toggleVisibility();
+      setIsModelVisible(vrmViewerRef.current.isVisible());
+    }
+  }, []);
+
+  /**
+   * Handle wireframe toggle
+   */
+  const handleWireframeToggle = useCallback(() => {
+    if (vrmViewerRef.current) {
+      vrmViewerRef.current.toggleWireframe();
+      setIsModelWireframe(vrmViewerRef.current.isWireframe());
+    }
   }, []);
 
   const hasModel = !!currentModel;
   const hasAnimation = !!currentAnimation;
 
   return (
-    <MainLayout>
+    <MainLayout
+      onAnimationPlay={handleAnimationPlay}
+      onAnimationDelete={handleAnimationDelete}
+      onAnimationUpdate={handleAnimationUpdate}
+      onModelLoad={handleModelLoad}
+      onModelDelete={handleModelDelete}
+      onModelUpdate={handleModelUpdate}
+      onExport={() => setIsExportDialogOpen(true)}
+    >
       <div className="relative flex flex-col h-full">
         {/* Viewer */}
         <div className="flex-1 relative">
-          <VRMViewer />
+          <VRMViewer ref={vrmViewerRef} />
           
           {hasModel && (
             <>
+              {/* Save Model Button (only for unsaved models) */}
+              {unsavedModelFile && (
+                <div className="absolute top-4 left-4 z-10">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={handleSaveModel}
+                    disabled={isSaving}
+                    loading={isSaving}
+                    title="Save model to library"
+                  >
+                    {isSaving ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                        Save Model
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+              
               <ThumbnailCapture
                 onCapture={handleThumbnailCapture}
+                isCapturing={isCapturing}
                 disabled={!hasModel}
               />
               
@@ -285,10 +650,10 @@ function App() {
                 )}
                 
                 <ModelControls
-                  isVisible={true}
-                  onVisibilityToggle={() => console.log('Toggle visibility')}
-                  isWireframe={false}
-                  onWireframeToggle={() => console.log('Toggle wireframe')}
+                  isVisible={isModelVisible}
+                  onVisibilityToggle={handleVisibilityToggle}
+                  isWireframe={isModelWireframe}
+                  onWireframeToggle={handleWireframeToggle}
                   onResetPose={handleResetPose}
                   onResetCamera={handleResetCamera}
                 />
@@ -301,7 +666,10 @@ function App() {
         {!hasModel && (
           <div className="absolute inset-0 flex items-center justify-center p-8">
             <div className="max-w-2xl w-full">
-              <DropZone onDrop={handleDrop} />
+              <DropZone
+                onDrop={handleDrop}
+                disabled={!isInitialized}
+              />
               
               {/* File Previews */}
               {droppedFiles.length > 0 && (
@@ -380,3 +748,4 @@ function App() {
 }
 
 export default App;
+

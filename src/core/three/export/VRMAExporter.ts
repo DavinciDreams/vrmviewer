@@ -4,17 +4,24 @@
  */
 
 import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import {
   VRMAExportOptions,
   ExportResult,
   ExportProgress,
-} from '../../types/export.types';
+  ExportError,
+} from '../../../types/export.types';
 
 /**
  * VRMA Exporter
  * Handles VRMA export functionality
  */
 export class VRMAExporter {
+  private gltfExporter: GLTFExporter;
+
+  constructor() {
+    this.gltfExporter = new GLTFExporter();
+  }
   /**
    * Export current animation as VRMA
    */
@@ -65,9 +72,15 @@ export class VRMAExporter {
       });
 
       const result = await this.exportToVRMA(animation, vmaMetadata);
-
-      if (!result.success) {
-        return result;
+      
+      if (!result.success || !result.data) {
+        return {
+          success: false,
+          error: result.error || {
+            type: 'EXPORT_FAILED',
+            message: 'Failed to export VRMA - no data returned',
+          },
+        };
       }
 
       // Create blob
@@ -79,7 +92,7 @@ export class VRMAExporter {
         totalSteps: 4,
       });
 
-      const blob = new Blob([result.data], { type: 'application/octet-stream' });
+      const blob = new Blob([result.data!], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
 
       this.reportProgress(onProgress, {
@@ -119,6 +132,15 @@ export class VRMAExporter {
    * Prepare VRM metadata
    */
   private prepareVRMMetadata(options: VRMAExportOptions): Record<string, unknown> {
+    // Handle optional metadata
+    if (!options.metadata) {
+      return {
+        title: 'Untitled Animation',
+        version: '1.0',
+        author: 'Unknown',
+      };
+    }
+    
     return {
       title: options.metadata.title || 'Untitled Animation',
       version: options.metadata.version || '1.0',
@@ -146,7 +168,7 @@ export class VRMAExporter {
   private async exportToVRMA(
     animation: THREE.AnimationClip,
     metadata: Record<string, unknown>
-  ): Promise<ExportResult<ArrayBuffer>> {
+  ): Promise<{ success: boolean; data?: ArrayBuffer; error?: ExportError }> {
     // Note: This is a simplified implementation
     // Full VRMA export would use @pixiv/three-vrm-animation library
     // to properly create VRMA format with all VRMA extensions

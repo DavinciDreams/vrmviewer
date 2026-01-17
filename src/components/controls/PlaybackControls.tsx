@@ -95,13 +95,20 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
           {/* Progress bar */}
           <div
             className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-all duration-150 ease-out"
-            style={{ width: `${progress}%` }}
+            style={{
+              '--progress-percent': `${progress}%`,
+              width: 'var(--progress-percent)'
+            } as React.CSSProperties}
           />
           
           {/* Scrubber handle */}
           <div
             className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg border-2 border-blue-500 cursor-grab active:cursor-grabbing hover:scale-110 transition-transform"
-            style={{ left: `${progress}%`, transform: 'translate(-50%, -50%)' }}
+            style={{
+              '--progress-percent': `${progress}%`,
+              left: 'var(--progress-percent)',
+              transform: 'translate(-50%, -50%)'
+            } as React.CSSProperties}
             onMouseDown={(e) => e.stopPropagation()}
           />
           

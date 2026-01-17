@@ -5,12 +5,13 @@
 
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-import { VRMMetadata } from '../../types/vrm.types';
+import { VRMMetadata } from '../../../types/vrm.types';
 import {
   VRMExportOptions,
   ExportResult,
   ExportProgress,
-} from '../../types/export.types';
+  ExportError,
+} from '../../../types/export.types';
 
 /**
  * VRM Exporter
@@ -115,6 +116,16 @@ export class VRMExporter {
         totalSteps: 5,
       });
 
+      if (!gltfResult.data) {
+        return {
+          success: false,
+          error: {
+            type: 'EXPORT_FAILED',
+            message: 'Failed to export GLTF - no data returned',
+          },
+        };
+      }
+
       const blob = new Blob([gltfResult.data], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
 
@@ -131,7 +142,7 @@ export class VRMExporter {
         data: {
           blob,
           url,
-          filename: this.generateFilename(options.metadata.name, 'vrm'),
+          filename: this.generateFilename(options.metadata.title, 'vrm'),
           size: blob.size,
           format: 'vrm',
           thumbnail,
@@ -265,14 +276,17 @@ export class VRMExporter {
   private async exportToGLTF(
     model: THREE.Group,
     options: VRMExportOptions
-  ): Promise<ExportResult<ArrayBuffer>> {
+  ): Promise<{ success: boolean; data?: ArrayBuffer; error?: ExportError }> {
     return new Promise((resolve) => {
       this.gltfExporter.parse(
         model,
         (gltf) => {
+          // GLTFExporter returns either ArrayBuffer or object
+          const data = gltf instanceof ArrayBuffer ? gltf : JSON.stringify(gltf);
+          const arrayBuffer = data instanceof ArrayBuffer ? data : new TextEncoder().encode(data).buffer;
           resolve({
             success: true,
-            data: gltf,
+            data: arrayBuffer,
           });
         },
         (error) => {

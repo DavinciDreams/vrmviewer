@@ -165,6 +165,13 @@ export class ModelService {
   }
 
   /**
+   * List all models
+   */
+  async listModels(): Promise<DatabaseOperationResult<ModelRecord[]>> {
+    return await this.getAllModels();
+  }
+
+  /**
    * Get model count
    */
   async getModelCount(): Promise<number> {
@@ -368,11 +375,6 @@ export class ModelService {
       success: true,
       data: filtered,
     };
-  /**
-   * List all models
-   */
-  async listModels(): Promise<DatabaseOperationResult<ModelRecord[]>> {
-    return await this.getAllModels();
   }
 }
 

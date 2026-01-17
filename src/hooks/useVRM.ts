@@ -4,6 +4,7 @@
  */
 
 import { useCallback } from 'react';
+import * as THREE from 'three';
 import { loaderManager } from '../core/three/loaders/LoaderManager';
 import { useVRMStore } from '../store/vrmStore';
 import { vrmLoader } from '../core/three/loaders/VRMLoader';
@@ -72,17 +73,49 @@ export function useVRM() {
         return;
       }
 
-      const result = await vrmLoader.loadFromFile(file);
+      const result = await loaderManager.loadFromFile(file);
 
       if (result.success && result.data) {
-        setModel(result.data);
-        setMetadata({
-          name: result.data.metadata.title,
-          version: result.data.metadata.version,
-          author: result.data.metadata.author,
-        });
+        // For VRM files, use vrmLoader directly to get full VRM structure
+        if (result.data.metadata?.format === 'vrm') {
+          const vrmResult = await vrmLoader.loadFromFile(file);
+          if (vrmResult.success && vrmResult.data) {
+            setModel(vrmResult.data);
+            setMetadata({
+              name: vrmResult.data.metadata.title,
+              version: vrmResult.data.metadata.version,
+              author: vrmResult.data.metadata.author,
+            });
+          } else {
+            setError(vrmResult.error?.message || 'Failed to load VRM model');
+          }
+        } else {
+          // For other formats, create a VRM-like structure
+          const vrmLikeModel: VRMModel = {
+            vrm: undefined as never,
+            metadata: {
+              title: result.data.metadata?.name || file.name,
+              version: '1.0',
+              author: 'Unknown',
+            },
+            expressions: new Map(),
+            humanoid: {
+              humanBones: [],
+            },
+            firstPerson: undefined,
+            scene: result.data.model as THREE.Group,
+            skeleton: undefined as never,
+          };
+          
+          setModel(vrmLikeModel);
+          setMetadata({
+            name: result.data.metadata?.name || file.name,
+            version: '1.0',
+            author: 'Unknown',
+          });
+        }
       } else {
-        setError(result.error?.message || 'Failed to load VRM model');
+        setError(result.error?.message || 'Failed to load model');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
@@ -111,7 +144,7 @@ export function useVRM() {
       const result = await loaderManager.loadFromFile(file);
 
       if (result.success && result.data) {
-        // For VRM files, use vrmLoader directly
+        // For VRM files, use vrmLoader directly to get full VRM structure
         if (result.data.metadata?.format === 'vrm') {
           const vrmResult = await vrmLoader.loadFromFile(file);
           if (vrmResult.success && vrmResult.data) {
@@ -122,11 +155,36 @@ export function useVRM() {
               author: vrmResult.data.metadata.author,
             });
             return vrmResult.data;
+          } else {
+            setError(vrmResult.error?.message || 'Failed to load VRM model');
+            return null;
           }
         } else {
-          // For other formats, we need to convert to VRM-like structure
-          // For now, just return null since we focus on VRM
-          setError('Only VRM files are fully supported');
+          // For other formats (GLB, GLTF, FBX), create a VRM-like structure
+          const vrmLikeModel: VRMModel = {
+            vrm: undefined as never,
+            metadata: {
+              title: result.data.metadata?.name || file.name,
+              version: '1.0',
+              author: 'Unknown',
+            },
+            expressions: new Map(),
+            humanoid: {
+              humanBones: [],
+            },
+            firstPerson: undefined,
+            scene: result.data.model as THREE.Group,
+            skeleton: undefined as never,
+          };
+          
+          setModel(vrmLikeModel);
+          setMetadata({
+            name: result.data.metadata?.name || file.name,
+            version: '1.0',
+            author: 'Unknown',
+          });
+          
+          return vrmLikeModel;
         }
       } else {
         setError(result.error?.message || 'Failed to load model');

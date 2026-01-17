@@ -165,6 +165,13 @@ export class AnimationService {
   }
 
   /**
+   * List all animations
+   */
+  async listAnimations(): Promise<DatabaseOperationResult<AnimationRecord[]>> {
+    return await this.getAllAnimations();
+  }
+
+  /**
    * Get animation count
    */
   async getAnimationCount(): Promise<number> {
@@ -312,7 +319,7 @@ export class AnimationService {
     await this.initialize();
 
     const result = await this.repository.getByName(name);
-    return result.success && result.data && result.data.length > 0;
+    return !!(result.success && result.data && result.data.length > 0);
   }
 
   /**

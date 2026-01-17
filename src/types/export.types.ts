@@ -65,6 +65,7 @@ export interface VRMAExportOptions extends ExportOptions {
   includeHumanoid?: boolean;
   includeExpression?: boolean;
   includeLookAt?: boolean;
+  metadata?: VRMMetadata;
 }
 
 /**

@@ -1,10 +1,27 @@
 import React, { useState } from 'react';
+import { AnimationLibrary } from '../database/AnimationLibrary';
+import { ModelLibrary } from '../database/ModelLibrary';
 
 export interface SidebarProps {
   children?: React.ReactNode;
+  onAnimationPlay?: (id: string) => void;
+  onAnimationDelete?: (id: string) => void;
+  onAnimationUpdate?: (id: string, name: string, description: string) => void;
+  onModelLoad?: (id: string) => void;
+  onModelDelete?: (id: string) => void;
+  onModelUpdate?: (id: string, name: string, description: string) => void;
+  onExport?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = () => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  onAnimationPlay,
+  onAnimationDelete,
+  onAnimationUpdate,
+  onModelLoad,
+  onModelDelete,
+  onModelUpdate,
+  onExport,
+}) => {
   const [activeTab, setActiveTab] = useState<'animations' | 'models' | 'export'>('animations');
   
   return (
@@ -32,7 +49,10 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           Models
         </button>
         <button
-          onClick={() => setActiveTab('export')}
+          onClick={() => {
+            setActiveTab('export');
+            onExport?.();
+          }}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'export'
               ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750'
@@ -46,27 +66,19 @@ export const Sidebar: React.FC<SidebarProps> = () => {
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'animations' && (
-          <div className="p-4">
-            <div className="text-center text-gray-400 py-8">
-              <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-              </svg>
-              <p className="text-sm">No animations yet</p>
-              <p className="text-xs mt-1">Drag and drop animation files to get started</p>
-            </div>
-          </div>
+          <AnimationLibrary
+            onPlay={onAnimationPlay || (() => {})}
+            onDelete={onAnimationDelete || (() => {})}
+            onUpdate={onAnimationUpdate || (() => {})}
+          />
         )}
         
         {activeTab === 'models' && (
-          <div className="p-4">
-            <div className="text-center text-gray-400 py-8">
-              <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
-              </svg>
-              <p className="text-sm">No models yet</p>
-              <p className="text-xs mt-1">Drag and drop model files to get started</p>
-            </div>
-          </div>
+          <ModelLibrary
+            onLoad={onModelLoad || (() => {})}
+            onDelete={onModelDelete || (() => {})}
+            onUpdate={onModelUpdate || (() => {})}
+          />
         )}
         
         {activeTab === 'export' && (

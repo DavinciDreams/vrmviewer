@@ -13,10 +13,10 @@ export class CameraManager {
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
   private renderer: THREE.WebGLRenderer;
-  private canvas: HTMLCanvasElement;
+  private lastUpdateTime = 0;
+  private isDragging = false;
 
   constructor(canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer) {
-    this.canvas = canvas;
     this.renderer = renderer;
 
     // Initialize camera
@@ -41,6 +41,15 @@ export class CameraManager {
     this.controls.minDistance = 0.5;
     this.controls.maxDistance = 10;
 
+    // Track interaction state to optimize control updates
+    this.controls.addEventListener('start', () => {
+      this.isDragging = true;
+    });
+    
+    this.controls.addEventListener('end', () => {
+      this.isDragging = false;
+    });
+
     // Handle window resize
     window.addEventListener('resize', this.handleResize);
   }
@@ -57,6 +66,13 @@ export class CameraManager {
    */
   getControls(): OrbitControls {
     return this.controls;
+  }
+
+  /**
+   * Update controls (should be called in render loop)
+   */
+  updateControls(): void {
+    this.controls.update();
   }
 
   /**
@@ -103,8 +119,8 @@ export class CameraManager {
   /**
    * Zoom camera
    */
-  zoom(_delta: number): void {
-    const zoomFactor = 1.1;
+  zoom(delta: number): void {
+    const zoomFactor = delta > 0 ? 1.1 : 0.9;
     this.camera.position.multiplyScalar(zoomFactor);
     this.controls.update();
   }
@@ -147,7 +163,7 @@ export class CameraManager {
    */
   dispose(): void {
     this.controls.dispose();
-    this.camera.dispose();
+    // Camera doesn't have a dispose method in Three.js
     window.removeEventListener('resize', this.handleResize);
   }
 }
@@ -155,4 +171,12 @@ export class CameraManager {
 /**
  * Create singleton instance
  */
-export const cameraManager = new CameraManager(document.querySelector('canvas') as HTMLCanvasElement, null);
+// Note: Singleton initialization requires canvas and renderer to be available at runtime
+// This should be initialized when the application mounts
+export let cameraManager: CameraManager | null;
+export function initializeCameraManager(canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer): CameraManager {
+  if (!cameraManager) {
+    cameraManager = new CameraManager(canvas, renderer);
+  }
+  return cameraManager;
+}
