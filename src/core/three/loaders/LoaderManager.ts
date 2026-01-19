@@ -10,7 +10,6 @@ import { fbxLoader } from './FBXLoader';
 import { bvhLoader } from './BVHLoader';
 import { vrmaLoader } from './VRMALoader';
 import {
-  LoaderResult,
   LoaderError,
   LoadingStage,
   ModelLoadOptions,
@@ -269,7 +268,7 @@ export class LoaderManager {
       };
     }
 
-    const { vrm, metadata } = result.data;
+    const { metadata } = result.data;
 
     return {
       success: true,
@@ -297,7 +296,7 @@ export class LoaderManager {
       };
     }
 
-    const { scene, animations, skeleton } = result.data;
+    const { scene, animations } = result.data;
 
     return {
       success: true,
@@ -326,7 +325,7 @@ export class LoaderManager {
       };
     }
 
-    const { scene, animations, skeleton } = result.data;
+    const { scene, animations } = result.data;
 
     return {
       success: true,
@@ -355,7 +354,7 @@ export class LoaderManager {
       };
     }
 
-    const { scene, animation, skeleton } = result.data;
+    const { scene, animation } = result.data;
 
     return {
       success: true,

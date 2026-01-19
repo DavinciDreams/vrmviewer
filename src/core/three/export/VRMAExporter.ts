@@ -4,7 +4,6 @@
  */
 
 import * as THREE from 'three';
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import {
   VRMAExportOptions,
   ExportResult,
@@ -19,7 +18,7 @@ import {
 export class VRMAExporter {
 
   constructor() {
-    this.gltfExporter = new GLTFExporter();
+    // GLTFExporter is created inline in exportToVRMA method
   }
   /**
    * Export current animation as VRMA

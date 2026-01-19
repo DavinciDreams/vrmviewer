@@ -13,7 +13,6 @@ import { useAnimationStore } from '../store/animationStore';
 export function useAnimation() {
   const {
     currentAnimation,
-    animations,
     playbackState,
     error,
     metadata,
@@ -22,25 +21,18 @@ export function useAnimation() {
     setError,
     clearError,
     setMetadata,
-    clearAnimation,
   } = useAnimationStore();
 
   /**
    * Load animation from URL
    */
   const loadFromURL = useCallback(async (url: string) => {
-    setAnimation(null);
     clearError();
     setMetadata(null);
-    clearAnimation();
 
-    const result = await loaderManager.loadFromURL(url, {
-      _progressCallback: (progress) => {
-        // Progress updates can be handled here if needed
-      },
-    });
+    const result = await loaderManager.loadFromURL(url);
 
-    if (result.success && result.data?.animation) {
+    if (result.success && result.data?.animation && result.data.metadata) {
       setAnimation(result.data.animation);
       setMetadata({
         name: result.data.metadata.name,
@@ -50,31 +42,18 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, clearAnimation, setError]);
+  }, [loaderManager, setAnimation, clearError, setMetadata, setError]);
 
   /**
    * Load animation from File
    */
   const loadFromFile = useCallback(async (file: File) => {
-    setAnimation(null);
     clearError();
     setMetadata(null);
-    clearAnimation();
 
-    const validation = validateAnimationFile(file);
-    
-    if (!validation.valid) {
-      setError(validation.error || 'Invalid file');
-      return;
-    }
+    const result = await loaderManager.loadFromFile(file);
 
-    const result = await loaderManager.loadFromFile(file, {
-      progressCallback: (progress) => {
-        // Progress updates can be handled here if needed
-      },
-    });
-
-    if (result.success && result.data?.animation) {
+    if (result.success && result.data?.animation && result.data.metadata) {
       setAnimation(result.data.animation);
       setMetadata({
         name: result.data.metadata.name,
@@ -84,24 +63,18 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, clearAnimation, setError]);
+  }, [loaderManager, setAnimation, clearError, setMetadata, setError]);
 
   /**
    * Load animation from ArrayBuffer
    */
   const loadFromArrayBuffer = useCallback(async (arrayBuffer: ArrayBuffer, filename: string) => {
-    setAnimation(null);
     clearError();
     setMetadata(null);
-    clearAnimation();
 
-    const result = await loaderManager.loadFromArrayBuffer(arrayBuffer, filename, {
-      progressCallback: (progress) => {
-        // Progress updates can be handled here if needed
-      },
-    });
+    const result = await loaderManager.loadFromArrayBuffer(arrayBuffer, filename);
 
-    if (result.success && result.data?.animation) {
+    if (result.success && result.data?.animation && result.data.metadata) {
       setAnimation(result.data.animation);
       setMetadata({
         name: result.data.metadata.name,
@@ -111,7 +84,7 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, clearAnimation, setError]);
+  }, [loaderManager, setAnimation, clearError, setMetadata, setError]);
 
   /**
    * Play animation
@@ -121,10 +94,7 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState({
-      isPlaying: true,
-      isPaused: false,
-    });
+    setPlaybackState({ ...playbackState, isPlaying: true, isPaused: false });
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**
@@ -135,10 +105,7 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState({
-      isPlaying: false,
-      isPaused: true,
-    });
+    setPlaybackState({ ...playbackState, isPlaying: false, isPaused: true });
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**
@@ -149,12 +116,12 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState((previousState) => ({
-      ...previousState,
+    setPlaybackState({
+      ...playbackState,
       isPlaying: false,
       isPaused: false,
       currentTime: 0,
-    }));
+    });
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**
@@ -165,10 +132,7 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState((previousState) => ({
-      ...previousState,
-      currentTime: time,
-    }));
+    setPlaybackState({ ...playbackState, currentTime: time });
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**
@@ -179,9 +143,7 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState({
-      speed: Math.max(0.1, Math.min(speed, 5)),
-    });
+    setPlaybackState({ ...playbackState, speed: Math.max(0.1, Math.min(speed, 5)) });
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**
@@ -192,9 +154,7 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState({
-      isLooping: loop,
-    });
+    setPlaybackState({ ...playbackState, isLooping: loop });
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**
@@ -218,7 +178,6 @@ export function useAnimation() {
 
   return {
     currentAnimation,
-    animations,
     playbackState,
     error,
     metadata,

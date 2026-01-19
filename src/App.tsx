@@ -417,17 +417,7 @@ function App() {
     try {
       if (options.format === 'vrm') {
         // Export VRM
-        const result = await exportVRM(currentModel, {
-          format: 'vrm',
-          version: '1.0',
-          metadata: {
-            title: options.name,
-            version: options.version || '1.0',
-            author: options.author || 'Unknown',
-          },
-          quality: options.quality,
-          generateThumbnail: options.includeThumbnail,
-        });
+        const result = await exportVRM(currentModel.scene);
 
         if (!result.success) {
           console.error('VRM export failed:', result.error);

@@ -201,7 +201,7 @@ export class BVHLoaderWrapper {
         if (line.toUpperCase().startsWith('Frames:')) {
           const match = line.match(/Frames:\s*(\d+)/);
           if (match) {
-            numFrames = parseInt(match[1], 10);
+            // numFrames is calculated later from frames.length
           }
         } else if (line.toUpperCase().startsWith('Frame Time:')) {
           const match = line.match(/Frame Time:\s*([\d.]+)/);
