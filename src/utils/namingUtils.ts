@@ -312,7 +312,7 @@ export function isModelName(name: string): boolean {
  */
 export function getNameSuggestions(
   input: string,
-  existingNames: string[],
+  _existingNames: string[],
   maxSuggestions: number = 10
 ): string[] {
   const suggestions: string[] = [];

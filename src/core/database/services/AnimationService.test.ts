@@ -46,18 +46,6 @@ describe('AnimationService', () => {
 
     it('should load animation', async () => {
       const service = new AnimationService()
-      const _mockAnimation = {
-        uuid: 'test-uuid',
-        name: 'Test Animation',
-        displayName: 'Test Animation',
-        duration: 5,
-        format: 'vrma' as const,
-        tags: [],
-        data: new ArrayBuffer(0),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        size: 0,
-      }
 
       const result = await service.loadAnimation('test-id')
 
@@ -76,32 +64,6 @@ describe('AnimationService', () => {
 
     it('should list animations', async () => {
       const service = new AnimationService()
-      const _mockAnimations = [
-        {
-          uuid: '1',
-          name: 'Animation 1',
-          displayName: 'Animation 1',
-          duration: 5,
-          format: 'vrma' as const,
-          tags: [],
-          data: new ArrayBuffer(0),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          size: 0,
-        },
-        {
-          uuid: '2',
-          name: 'Animation 2',
-          displayName: 'Animation 2',
-          duration: 3,
-          format: 'vrma' as const,
-          tags: [],
-          data: new ArrayBuffer(0),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          size: 0,
-        },
-      ]
 
       const result = await service.listAnimations()
 

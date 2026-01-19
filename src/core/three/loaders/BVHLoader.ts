@@ -190,7 +190,6 @@ export class BVHLoaderWrapper {
     const rotations: THREE.Quaternion[][] = [];
     
     // Parse Frames and Frame Time
-    let numFrames = 0;
     let frameTime = 0;
     
     if (lineIndex < lines.length && lines[lineIndex].toUpperCase().startsWith('MOTION')) {

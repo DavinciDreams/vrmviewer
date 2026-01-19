@@ -57,30 +57,6 @@ describe('ModelService', () => {
 
     it('should load model', async () => {
       const service = new ModelService()
-      const _mockModel = {
-        vrm: {} as any,
-        metadata: {
-          title: 'Test Model',
-          version: '1.0',
-          author: 'Test Author',
-        },
-        expressions: new Map(),
-        humanoid: {
-          humanBones: [],
-        },
-        firstPerson: undefined,
-        scene: {} as any,
-        skeleton: {} as any,
-        size: 0,
-        name: 'Test Model',
-        displayName: 'Test Model',
-        format: 'vrm' as const,
-        tags: [],
-        data: new ArrayBuffer(0),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        version: '0.0' as const,
-      }
 
       const result = await service.loadModel('test-id')
 
@@ -99,38 +75,6 @@ describe('ModelService', () => {
 
     it('should list models', async () => {
       const service = new ModelService()
-      const mockModels = [
-        {
-          vrm: {} as any,
-          metadata: {
-            title: 'Model 1',
-            version: '1.0',
-            author: 'Author 1',
-          },
-          expressions: new Map(),
-          humanoid: {
-            humanBones: [],
-          },
-          firstPerson: undefined,
-          scene: {} as any,
-          skeleton: {} as any,
-        },
-        {
-          vrm: {} as any,
-          metadata: {
-            title: 'Model 2',
-            version: '1.0',
-            author: 'Author 2',
-          },
-          expressions: new Map(),
-          humanoid: {
-            humanBones: [],
-          },
-          firstPerson: undefined,
-          scene: {} as any,
-          skeleton: {} as any,
-        },
-      ]
 
       const result = await service.listModels()
 

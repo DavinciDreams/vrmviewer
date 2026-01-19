@@ -203,7 +203,7 @@ export class BlendShapeManager {
   public clearLipSync(): void {
     if (this.currentLipSync) {
       // Fade out current lip sync
-      Object.entries(this.currentLipSync.blendShapes).forEach(([name, value]) => {
+      Object.entries(this.currentLipSync.blendShapes).forEach(([name]) => {
         this.setBlendShape(name, 0);
       });
     }

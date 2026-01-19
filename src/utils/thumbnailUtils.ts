@@ -18,14 +18,14 @@ export interface CaptureThumbnailOptions {
 /**
  * Capture thumbnail from Three.js scene
  * 
- * @param renderer - The WebGLRenderer to use
+ * @param _renderer - The WebGLRenderer to use
  * @param scene - The scene to render
  * @param camera - The camera to use
  * @param options - Capture options
  * @returns Base64 data URL of the captured thumbnail
  */
 export async function captureThumbnail(
-  renderer: THREE.WebGLRenderer,
+  _renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
   camera: THREE.Camera,
   options: CaptureThumbnailOptions = {}

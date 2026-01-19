@@ -459,7 +459,7 @@ describe('exportUtils', () => {
 
       // First update should trigger callback
       tracker.update({
-        stage: 'preparing',
+        stage: 'PREPARING',
         progress: 25,
         message: 'Preparing',
         currentStep: 1,
@@ -468,7 +468,7 @@ describe('exportUtils', () => {
 
       // Immediate second update should be throttled
       tracker.update({
-        stage: 'preparing',
+        stage: 'PREPARING',
         progress: 50,
         message: 'Preparing',
         currentStep: 2,
@@ -498,7 +498,7 @@ describe('exportUtils', () => {
       const tracker = new ExportProgressTracker(callback)
 
       tracker.update({
-        stage: 'preparing',
+        stage: 'PREPARING',
         progress: 50,
         message: 'Preparing',
         currentStep: 1,

@@ -305,7 +305,7 @@ describe('exportStore', () => {
     })
 
     it('should return default extension for unknown format', () => {
-      const extension = getFormatExtension('unknown')
+      const extension = getFormatExtension('unknown' as any)
       expect(extension).toBe('.glb')
     })
   })
@@ -337,7 +337,7 @@ describe('exportStore', () => {
     })
 
     it('should return default MIME type for unknown format', () => {
-      const mimeType = getFormatMimeType('unknown')
+      const mimeType = getFormatMimeType('unknown' as any)
       expect(mimeType).toBe('model/gltf-binary')
     })
   })
