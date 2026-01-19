@@ -11,6 +11,7 @@ import {
   AnimationRecord,
   ModelRecord,
   DatabaseOperationResult,
+  DatabaseOperationError,
   DatabaseQueryOptions,
   DatabaseQueryResult,
 } from '../types/database.types';
@@ -53,14 +54,14 @@ export function useDatabase() {
    */
   const getAllAnimations = async (options?: DatabaseQueryOptions) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' } };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
     const result = await svc.getAllAnimations();
-
+    
     if (options) {
       return svc.filterAnimations(options);
     }
-
+    
     return result;
   };
 
@@ -69,9 +70,10 @@ export function useDatabase() {
    */
   const getAnimationById = async (id: number) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' } };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
-    return await svc.loadAnimationById(id);
+    const result = await svc.loadAnimationById(id);
+    return result;
   };
 
   /**
@@ -79,9 +81,10 @@ export function useDatabase() {
    */
   const getAnimationByUuid = async (uuid: string) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' } };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
-    return await svc.loadAnimation(uuid);
+    const result = await svc.loadAnimation(uuid);
+    return result;
   };
 
   /**
@@ -92,9 +95,10 @@ export function useDatabase() {
     thumbnail?: string
   ) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' } };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
-    return await svc.saveAnimation(animation, thumbnail);
+    const result = await svc.saveAnimation(animation, thumbnail);
+    return result;
   };
 
   /**

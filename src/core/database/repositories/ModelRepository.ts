@@ -68,8 +68,9 @@ export class ModelRepository {
           error: {
             type: 'NOT_FOUND',
             message: `Model with ID ${id} not found`,
+            details: error,
           },
-        };
+        } as DatabaseOperationError;
       }
 
       return {
@@ -85,7 +86,7 @@ export class ModelRepository {
           message: 'Failed to get model',
           details: error,
         },
-      };
+      } as DatabaseOperationError;
     }
   }
 

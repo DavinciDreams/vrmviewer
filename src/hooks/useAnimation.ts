@@ -3,10 +3,10 @@
  * Custom hook for animation loading and playback management
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { loaderManager } from '../core/three/loaders/LoaderManager';
 import { useAnimationStore } from '../store/animationStore';
-import { getFileInfo, validateAnimationFile } from '../utils/fileUtils';
+import { validateAnimationFile } from '../utils/fileUtils';
 
 /**
  * useAnimation Hook
@@ -19,7 +19,6 @@ export function useAnimation() {
     error,
     metadata,
     setAnimation,
-    setAnimations,
     setPlaybackState,
     setError,
     clearError,
@@ -31,18 +30,17 @@ export function useAnimation() {
    * Load animation from URL
    */
   const loadFromURL = useCallback(async (url: string) => {
-    setAnimation(null);
+    clearAnimation();
     clearError();
     setMetadata(null);
-    clearAnimation();
 
     const result = await loaderManager.loadFromURL(url, {
-      progressCallback: (progress) => {
+      progressCallback: (_progress) => {
         // Progress updates can be handled here if needed
       },
     });
 
-    if (result.success && result.data?.animation) {
+    if (result.success && result.data?.animation && result.data?.metadata) {
       setAnimation(result.data.animation);
       setMetadata({
         name: result.data.metadata.name,
@@ -52,16 +50,15 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, clearAnimation, setError]);
+  }, [loaderManager, clearAnimation, clearError, setMetadata, setAnimation, setError]);
 
   /**
    * Load animation from File
    */
   const loadFromFile = useCallback(async (file: File) => {
-    setAnimation(null);
+    clearAnimation();
     clearError();
     setMetadata(null);
-    clearAnimation();
 
     const validation = validateAnimationFile(file);
     
@@ -71,12 +68,12 @@ export function useAnimation() {
     }
 
     const result = await loaderManager.loadFromFile(file, {
-      progressCallback: (progress) => {
+      progressCallback: (_progress) => {
         // Progress updates can be handled here if needed
       },
     });
 
-    if (result.success && result.data?.animation) {
+    if (result.success && result.data?.animation && result.data?.metadata) {
       setAnimation(result.data.animation);
       setMetadata({
         name: result.data.metadata.name,
@@ -86,24 +83,23 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, clearAnimation, setError]);
+  }, [loaderManager, clearAnimation, clearError, setMetadata, setAnimation, setError]);
 
   /**
    * Load animation from ArrayBuffer
    */
   const loadFromArrayBuffer = useCallback(async (arrayBuffer: ArrayBuffer, filename: string) => {
-    setAnimation(null);
+    clearAnimation();
     clearError();
     setMetadata(null);
-    clearAnimation();
 
     const result = await loaderManager.loadFromArrayBuffer(arrayBuffer, filename, {
-      progressCallback: (progress) => {
+      progressCallback: (_progress) => {
         // Progress updates can be handled here if needed
       },
     });
 
-    if (result.success && result.data?.animation) {
+    if (result.success && result.data?.animation && result.data?.metadata) {
       setAnimation(result.data.animation);
       setMetadata({
         name: result.data.metadata.name,
@@ -113,7 +109,7 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, clearAnimation, setError]);
+  }, [loaderManager, clearAnimation, clearError, setMetadata, setAnimation, setError]);
 
   /**
    * Play animation
@@ -124,6 +120,7 @@ export function useAnimation() {
     }
 
     setPlaybackState({
+      ...playbackState,
       isPlaying: true,
       isPaused: false,
     });
@@ -138,6 +135,7 @@ export function useAnimation() {
     }
 
     setPlaybackState({
+      ...playbackState,
       isPlaying: false,
       isPaused: true,
     });
@@ -152,6 +150,7 @@ export function useAnimation() {
     }
 
     setPlaybackState({
+      ...playbackState,
       isPlaying: false,
       isPaused: false,
       currentTime: 0,
@@ -167,6 +166,7 @@ export function useAnimation() {
     }
 
     setPlaybackState({
+      ...playbackState,
       currentTime: time,
     });
   }, [currentAnimation, playbackState, setPlaybackState]);
@@ -180,6 +180,7 @@ export function useAnimation() {
     }
 
     setPlaybackState({
+      ...playbackState,
       speed: Math.max(0.1, Math.min(speed, 5)),
     });
   }, [currentAnimation, playbackState, setPlaybackState]);
@@ -193,6 +194,7 @@ export function useAnimation() {
     }
 
     setPlaybackState({
+      ...playbackState,
       isLooping: loop,
     });
   }, [currentAnimation, playbackState, setPlaybackState]);

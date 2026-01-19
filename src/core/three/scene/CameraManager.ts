@@ -13,8 +13,7 @@ export class CameraManager {
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
   private renderer: THREE.WebGLRenderer;
-  private lastUpdateTime = 0;
-  private isDragging = false;
+  private _isDragging = false;
 
   constructor(canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
@@ -43,11 +42,11 @@ export class CameraManager {
 
     // Track interaction state to optimize control updates
     this.controls.addEventListener('start', () => {
-      this.isDragging = true;
+      this._isDragging = true;
     });
     
     this.controls.addEventListener('end', () => {
-      this.isDragging = false;
+      this._isDragging = false;
     });
 
     // Handle window resize

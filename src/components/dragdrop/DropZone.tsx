@@ -2,21 +2,22 @@ import React, { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 
 export interface DropZoneProps {
-  onDrop: (files: File[]) => void;
-  acceptedFormats?: string[];
+  onDrop: (file: File) => void;
   maxSize?: number;
   disabled?: boolean;
 }
 
 export const DropZone: React.FC<DropZoneProps> = ({
   onDrop,
-  acceptedFormats = ['.vrm', '.glb', '.gltf', '.fbx', '.bvh', '.vrma'],
-  maxSize = 500 * 1024 * 1024, // 500MB
+  maxSize = 500 * 1024 * 1024, //500MB
   disabled = false,
 }) => {
   const onDropCallback = useCallback(
     (acceptedFiles: File[]) => {
-      onDrop(acceptedFiles);
+      // Take only the first file for single file mode
+      if (acceptedFiles.length > 0) {
+        onDrop(acceptedFiles[0]);
+      }
     },
     [onDrop]
   );
@@ -31,7 +32,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
     },
     maxSize,
     disabled,
-    multiple: true,
+    multiple: false,
   });
 
   return (

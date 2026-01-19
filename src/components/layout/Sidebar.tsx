@@ -7,9 +7,6 @@ export interface SidebarProps {
   onAnimationPlay?: (id: string) => void;
   onAnimationDelete?: (id: string) => void;
   onAnimationUpdate?: (id: string, name: string, description: string) => void;
-  onModelLoad?: (id: string) => void;
-  onModelDelete?: (id: string) => void;
-  onModelUpdate?: (id: string, name: string, description: string) => void;
   onExport?: () => void;
 }
 
@@ -17,9 +14,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onAnimationPlay,
   onAnimationDelete,
   onAnimationUpdate,
-  onModelLoad,
-  onModelDelete,
-  onModelUpdate,
   onExport,
 }) => {
   const [activeTab, setActiveTab] = useState<'animations' | 'models' | 'export'>('animations');
@@ -74,11 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
         
         {activeTab === 'models' && (
-          <ModelLibrary
-            onLoad={onModelLoad || (() => {})}
-            onDelete={onModelDelete || (() => {})}
-            onUpdate={onModelUpdate || (() => {})}
-          />
+          <ModelLibrary />
         )}
         
         {activeTab === 'export' && (

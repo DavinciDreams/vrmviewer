@@ -11,6 +11,7 @@ import * as THREE from 'three';
 export class SceneManager {
   private scene: THREE.Scene;
   private renderer: THREE.WebGLRenderer;
+  private camera: THREE.PerspectiveCamera;
   private models: Map<string, THREE.Group> = new Map();
 
   constructor(canvas?: HTMLCanvasElement) {
@@ -32,6 +33,16 @@ export class SceneManager {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.renderer.setPixelRatio(window.devicePixelRatio);
     }
+
+    // Initialize camera
+    this.camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    this.camera.position.set(0, 1.5, 3);
+    this.camera.lookAt(0, 1, 0);
 
     // Enable shadows
     this.renderer.shadowMap.enabled = true;
@@ -107,7 +118,7 @@ export class SceneManager {
    * Update scene
    */
   update(): void {
-    this.renderer.render(this.scene);
+    this.renderer.render(this.scene, this.camera);
   }
 
   /**
@@ -127,7 +138,8 @@ export class SceneManager {
   dispose(): void {
     this.clearModels();
     this.renderer.dispose();
-    this.scene.dispose();
+    // Scene doesn't have a dispose method, just clear it
+    this.scene.clear();
     
     window.removeEventListener('resize', this.handleResize);
   }

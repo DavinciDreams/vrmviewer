@@ -1,12 +1,13 @@
 /**
  * VRMViewer Component
  * Main 3D viewer component with animation support
+ * Simplified for single model display
  */
 
-import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
-import { useVRMStore } from '../../store/vrmStore';
+import { useVRMStore, VRMModelEntry } from '../../store/vrmStore';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useAnimationStore } from '../../store/animationStore';
 import { initializeCameraManager, cameraManager } from '../../core/three/scene/CameraManager';
@@ -33,6 +34,33 @@ export interface VRMViewerProps {
 }
 
 /**
+ * Calculate camera position to frame single model
+ */
+function calculateCameraFraming(
+  model: VRMModelEntry,
+  camera: THREE.PerspectiveCamera
+): { position: THREE.Vector3; target: THREE.Vector3 } {
+  // Calculate bounding box
+  const box = new THREE.Box3().setFromObject(model.model.scene);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  
+  // Calculate camera distance based on field of view
+  const fov = camera.fov * (Math.PI / 180);
+  const maxDimension = Math.max(size.x, size.y);
+  const distance = maxDimension / (2 * Math.tan(fov / 2)) * 1.5;
+  
+  // Position camera
+  const position = new THREE.Vector3(
+    center.x,
+    center.y + size.y * 0.5,
+    center.z + distance
+  );
+  
+  return { position, target: center };
+}
+
+/**
  * VRMViewer component
  */
 export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
@@ -45,9 +73,10 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const modelSceneRef = useRef<THREE.Group | null>(null);
 
   // Store state
-  const { currentModel, isLoading: vrmLoading } = useVRMStore();
+  const { model, isLoading: vrmLoading } = useVRMStore();
   const {
     isPlaying,
     loop,
@@ -63,34 +92,87 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
    * Apply visibility state to model
    */
   useEffect(() => {
-    if (currentModel && sceneRef.current) {
-      currentModel.scene.visible = isVisible;
-    }
-  }, [isVisible, currentModel]);
+    if (!isInitialized || !model) return;
+    
+    model.model.scene.visible = model.isVisible && isVisible;
+  }, [isVisible, model, isInitialized]);
 
   /**
    * Apply wireframe state to model materials
    */
   useEffect(() => {
-    if (currentModel && sceneRef.current) {
-      const setWireframeRecursive = (object: THREE.Object3D) => {
-        if (object instanceof THREE.Mesh && object.material) {
-          const material = object.material;
-          if (Array.isArray(material)) {
-            material.forEach(mat => {
-              mat.wireframe = isWireframe;
-              mat.needsUpdate = true;
-            });
-          } else {
-            material.wireframe = isWireframe;
-            material.needsUpdate = true;
-          }
+    if (!isInitialized || !model) return;
+    
+    const wireframe = model.isWireframe || isWireframe;
+    
+    const setWireframeRecursive = (object: THREE.Object3D) => {
+      if (object instanceof THREE.Mesh && object.material) {
+        const material = object.material;
+        if (Array.isArray(material)) {
+          material.forEach(mat => {
+            mat.wireframe = wireframe;
+            mat.needsUpdate = true;
+          });
+        } else {
+          material.wireframe = wireframe;
+          material.needsUpdate = true;
         }
-        object.children.forEach(child => setWireframeRecursive(child));
-      };
-      setWireframeRecursive(currentModel.scene);
+      }
+      object.children.forEach(child => setWireframeRecursive(child));
+    };
+    
+    setWireframeRecursive(model.model.scene);
+  }, [isWireframe, model, isInitialized]);
+
+  /**
+   * Position model in scene
+   */
+  useEffect(() => {
+    if (!isInitialized || !sceneRef.current) return;
+    
+    const scene = sceneRef.current;
+    
+    // Remove previous model if exists
+    if (modelSceneRef.current) {
+      scene.remove(modelSceneRef.current);
+      modelSceneRef.current = null;
     }
-  }, [isWireframe, currentModel]);
+    
+    // Add new model if available
+    if (model) {
+      const modelScene = model.model.scene;
+      
+      // Calculate bounding box for normalization
+      const box = new THREE.Box3().setFromObject(modelScene);
+      const size = box.getSize(new THREE.Vector3());
+      
+      // Calculate scale to normalize height to 1.5 units
+      const targetHeight = 1.5;
+      const scale = targetHeight / size.y;
+      
+      // Calculate Y offset to place model on ground
+      const yOffset = -box.min.y * scale;
+      
+      // Apply position, scale, and add to scene
+      modelScene.position.set(0, yOffset, 0);
+      modelScene.scale.setScalar(scale);
+      scene.add(modelScene);
+      modelSceneRef.current = modelScene;
+      
+      // Notify parent (only if VRM object is available)
+      if (onVRMLoaded && model.model.vrm) {
+        onVRMLoaded(model.model.vrm);
+      }
+      
+      // Update camera to frame the model
+      if (cameraManager) {
+        const framing = calculateCameraFraming(model, cameraManager.getCamera());
+        cameraManager.getCamera().position.copy(framing.position);
+        cameraManager.getControls().target.copy(framing.target);
+        cameraManager.getControls().update();
+      }
+    }
+  }, [model, isInitialized, onVRMLoaded]);
 
   /**
    * Toggle visibility
@@ -203,45 +285,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   }, [onCanvasRef]);
 
   /**
-   * Add VRM to scene when loaded
-   */
-  useEffect(() => {
-    if (currentModel && isInitialized && sceneRef.current) {
-      // Clear previous models
-      while (sceneRef.current!.children.length > 0) {
-        const child = sceneRef.current!.children[0];
-        if (child instanceof THREE.Light) {
-          // Keep lights
-          break;
-        }
-        sceneRef.current!.remove(child);
-      }
-
-      // Add VRM to scene
-      sceneRef.current!.add(currentModel.scene);
-      
-      // Center and scale VRM
-      const box = new THREE.Box3().setFromObject(currentModel.scene);
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      
-      // Center VRM
-      currentModel.scene.position.sub(center);
-      currentModel.scene.position.y = -box.min.y;
-      
-      // Scale to reasonable height
-      const targetHeight = 1.6; // meters
-      const scale = targetHeight / size.y;
-      currentModel.scene.scale.setScalar(scale);
-
-      // Notify parent (only if VRM object is available)
-      if (onVRMLoaded && currentModel.vrm) {
-        onVRMLoaded(currentModel.vrm);
-      }
-    }
-  }, [currentModel, isInitialized, onVRMLoaded]);
-
-  /**
    * Animation loop
    */
   useEffect(() => {
@@ -281,6 +324,8 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     };
   }, [isInitialized]);
 
+  const hasModel = model !== null;
+
   return (
     <div className="relative w-full h-full bg-gray-900">
       <canvas
@@ -314,7 +359,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Drop zone indicator */}
-      {!currentModel && !vrmLoading && !error && (
+      {!hasModel && !vrmLoading && !error && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
             <svg className="w-16 h-16 text-gray-600 mx-auto mb-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -326,7 +371,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Playback info overlay */}
-      {currentModel && !vrmLoading && !error && (
+      {hasModel && !vrmLoading && !error && (
         <div className="absolute bottom-4 left-4 bg-black/60 text-white px-3 py-2 rounded text-xs">
           <div className="flex items-center gap-2">
             {isPlaying && (

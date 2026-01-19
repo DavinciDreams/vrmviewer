@@ -184,7 +184,6 @@ export class IdleAnimationController {
   private updateBlinking(deltaTime: number): void {
     if (!this.blendShapeManager) return;
 
-    const config = this.state.blinking;
     this.blinkTimer += deltaTime;
 
     if (!this.isBlinking) {

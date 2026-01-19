@@ -120,19 +120,27 @@ export class LightingManager {
     
     if (this.rimLight) {
       this.scene.remove(this.rimLight);
+      this.rimLight.dispose();
       this.rimLight = undefined;
     }
 
     this.ambientLight.dispose();
     this.directionalLight.dispose();
-    
-    if (this.rimLight) {
-      this.rimLight.dispose();
-    }
   }
 }
 
 /**
  * Create singleton instance
+ * Note: This requires a scene and renderer to be provided
  */
-export const lightingManager = new LightingManager();
+let lightingManagerInstance: LightingManager | null = null;
+
+export function getLightingManager(scene?: THREE.Scene, renderer?: THREE.WebGLRenderer): LightingManager {
+  if (!lightingManagerInstance) {
+    if (!scene || !renderer) {
+      throw new Error('LightingManager requires scene and renderer for first initialization');
+    }
+    lightingManagerInstance = new LightingManager(scene, renderer);
+  }
+  return lightingManagerInstance;
+}

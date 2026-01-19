@@ -3,12 +3,15 @@
  * Provides export functionality for components
  */
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
+import * as THREE from 'three';
 import { getVRMExporter } from '../core/three/export/VRMExporter';
 import { getVRMAExporter } from '../core/three/export/VRMAExporter';
 import {
   ExportResult,
   ExportProgress,
+  VRMExportOptions,
+  VRMAExportOptions,
 } from '../types/export.types';
 import { downloadFile } from '../utils/exportUtils';
 
@@ -20,7 +23,7 @@ export function useExport() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
-  const [exportOptions, setExportOptions] = useState({
+  const [exportOptions, setExportOptions] = useState<VRMExportOptions>({
     format: 'vrm',
     quality: 'medium',
     compression: 'none',
@@ -31,6 +34,7 @@ export function useExport() {
     includeBlendShapes: true,
     includeMaterials: true,
     includeTextures: true,
+    version: '1.0',
     metadata: {
       title: 'Untitled',
       version: '1.0',
@@ -44,7 +48,7 @@ export function useExport() {
   /**
    * Export model as VRM
    */
-  const exportVRM = async (model: THREE.Group, options?: Record<string, unknown>) => {
+  const exportVRM = async (model: THREE.Group) => {
     setIsExporting(true);
     setExportProgress({
       stage: 'INITIALIZING',
@@ -54,9 +58,10 @@ export function useExport() {
       totalSteps: 5,
     });
 
-    const fullOptions = {
+    const fullOptions: VRMExportOptions = {
       ...exportOptions,
       format: 'vrm',
+      version: '1.0',
     };
 
     const result = await vrmExporter.exportVRM(model, fullOptions, (progress) => {
@@ -77,7 +82,7 @@ export function useExport() {
   /**
    * Export animation as VRMA
    */
-  const exportVRMA = async (animation: THREE.AnimationClip, options?: Record<string, unknown>) => {
+  const exportVRMA = async (animation: THREE.AnimationClip, options?: Partial<VRMAExportOptions>) => {
     setIsExporting(true);
     setExportProgress({
       stage: 'INITIALIZING',
@@ -87,10 +92,11 @@ export function useExport() {
       totalSteps: 4,
     });
 
-    const fullOptions = {
+    const fullOptions: VRMAExportOptions = {
       ...exportOptions,
       format: 'vrma',
-      animationName: options?.metadata?.title || 'Untitled Animation',
+      animationName: options?.animationName || 'Untitled Animation',
+      metadata: options?.metadata || exportOptions.metadata,
     };
 
     const result = await vrmaExporter.exportVRMA(animation, fullOptions, (progress) => {

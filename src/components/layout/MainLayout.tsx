@@ -4,12 +4,6 @@ import { Sidebar } from './Sidebar';
 
 export interface MainLayoutProps {
   children?: React.ReactNode;
-  onAnimationPlay?: (id: string) => Promise<void>;
-  onAnimationDelete?: (id: string) => Promise<void>;
-  onAnimationUpdate?: (id: string, name: string, description: string) => Promise<void>;
-  onModelLoad?: (id: string) => Promise<void>;
-  onModelDelete?: (id: string) => Promise<void>;
-  onModelUpdate?: (id: string, name: string, description: string) => Promise<void>;
   onExport?: () => void;
 }
 

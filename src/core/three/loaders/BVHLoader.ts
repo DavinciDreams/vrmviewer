@@ -71,11 +71,11 @@ export class BVHLoaderWrapper {
    * Load BVH from File
    */
   async loadFromFile(
-    file: File,
-    _options?: ModelLoadOptions
-  ): Promise<LoaderResult<BVHModel>> {
-    try {
-      this.updateProgress(_options, 0, 100, 'INITIALIZING');
+   file: File,
+   options?: ModelLoadOptions
+ ): Promise<LoaderResult<BVHModel>> {
+   try {
+     this.updateProgress(options, 0, 100, 'INITIALIZING');
 
       const text = await file.text();
       const model = this.parseAndConvert(text);
@@ -190,7 +190,6 @@ export class BVHLoaderWrapper {
     const rotations: THREE.Quaternion[][] = [];
     
     // Parse Frames and Frame Time
-    let numFrames = 0;
     let frameTime = 0;
     
     if (lineIndex < lines.length && lines[lineIndex].toUpperCase().startsWith('MOTION')) {

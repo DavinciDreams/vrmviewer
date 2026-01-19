@@ -134,6 +134,16 @@ export interface DatabaseOperationResult<T = void> {
 }
 
 /**
+ * Database Operation Error
+ * Error case from database operations
+ */
+export interface DatabaseOperationError {
+  success: boolean;
+  error: DatabaseError;
+  details?: unknown;
+}
+
+/**
  * Database Error
  * Error from database operations
  */
