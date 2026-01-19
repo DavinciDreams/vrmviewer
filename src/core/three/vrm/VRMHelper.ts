@@ -46,7 +46,7 @@ export class VRMHelper {
     if (!vrm.meta) return null;
 
     // Handle different VRM versions
-    const meta = vrm.meta as VRMMetadata;
+    const meta = vrm.meta as any;
     
     return {
       title: meta.title || meta.metaName || '',

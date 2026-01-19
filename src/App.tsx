@@ -17,6 +17,7 @@ import { useIdleAnimation } from './hooks/useIdleAnimation';
 import { useBlendShapes } from './hooks/useBlendShapes';
 import { useExport } from './hooks/useExport';
 import { useDatabase } from './hooks/useDatabase';
+import { useDAMIntegration } from './hooks/useDAMIntegration';
 import { getFileExtension, getFileTypeFromExtension } from './constants/formats';
 import { generateDescriptiveName, generateUniqueName } from './utils/namingUtils';
 import { bvhLoader } from './core/three/loaders/BVHLoader';
@@ -55,6 +56,8 @@ function App() {
   const { exportVRM, exportVRMA } = useExport();
   // Database
   const { isInitialized, animations, models } = useDatabase();
+  // DAM Integration
+  const { config: damConfig, loadingState: damLoadingState, clearDAMState } = useDAMIntegration();
   // UI State
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -722,32 +725,51 @@ function App() {
         )}
         
         {/* Loading indicator */}
-        {isLoading && (
+        {(isLoading || damLoadingState.isLoading) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
             <div className="text-center">
               <svg className="w-16 h-16 text-blue-500 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357 2m15.357 2H15" />
               </svg>
-              <p className="text-gray-300 text-sm">Loading model...</p>
+              <p className="text-gray-300 text-sm">
+                {damConfig.model ? 'Loading from DAM...' : 'Loading model...'}
+              </p>
+              {damConfig.model && (
+                <p className="text-gray-400 text-xs mt-2 truncate max-w-xs mx-auto">
+                  {damConfig.model}
+                </p>
+              )}
             </div>
           </div>
         )}
         
         {/* Error indicator */}
-        {error && (
+        {(error || damLoadingState.error) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
             <div className="text-center">
               <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-red-400 text-sm mb-2">Error loading model</p>
-              <p className="text-gray-400 text-xs">{error}</p>
+              <p className="text-gray-400 text-xs">{error || damLoadingState.error}</p>
               <button
-                onClick={() => clearCurrentModel()}
+                onClick={() => {
+                  clearCurrentModel();
+                  clearDAMState();
+                }}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
               >
                 Clear Error
               </button>
+              {damConfig.model && (
+                <div className="mt-4 p-3 bg-gray-800 rounded-lg max-w-md mx-auto">
+                  <p className="text-gray-300 text-xs mb-2">DAM Configuration:</p>
+                  <p className="text-blue-400 text-xs break-all">Model: {damConfig.model}</p>
+                  {damConfig.animation && <p className="text-blue-400 text-xs break-all">Animation: {damConfig.animation}</p>}
+                  {damConfig.autoplay && <p className="text-green-400 text-xs">Autoplay: enabled</p>}
+                  {damConfig.camera && <p className="text-purple-400 text-xs">Camera: {damConfig.camera}</p>}
+                </div>
+              )}
             </div>
           </div>
         )}
