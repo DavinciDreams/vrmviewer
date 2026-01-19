@@ -208,28 +208,42 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     scene.background = new THREE.Color(0x1a1a2e);
     sceneRef.current = scene;
 
-    // Cache canvas dimensions
-    const width = canvasRef.current.clientWidth;
-    const height = canvasRef.current.clientHeight;
+    // Initialize renderer when canvas has actual dimensions
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        
+        // Only initialize when canvas has non-zero dimensions
+        if (width > 0 && height > 0 && !rendererRef.current) {
+          // Create renderer
+          const renderer = new THREE.WebGLRenderer({
+            canvas: canvasRef.current!,
+            antialias: false,
+            alpha: true,
+            powerPreference: 'high-performance',
+          });
+          renderer.setSize(width, height);
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type = THREE.PCFShadowMap;
+          rendererRef.current = renderer;
 
-    // Create renderer
-    const renderer = new THREE.WebGLRenderer({
-      canvas: canvasRef.current,
-      antialias: false,
-      alpha: true,
-      powerPreference: 'high-performance',
+          // Initialize CameraManager with canvas and renderer
+          initializeCameraManager(canvasRef.current!, renderer);
+          const camManager = cameraManager;
+          if (camManager) {
+            cameraRef.current = camManager.getCamera();
+          }
+          
+          // Disconnect observer after initialization
+          resizeObserver.disconnect();
+        }
+      }
     });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
-    rendererRef.current = renderer;
 
-    // Initialize CameraManager with canvas and renderer
-    initializeCameraManager(canvasRef.current, renderer);
-    const camManager = cameraManager;
-    if (camManager) {
-      cameraRef.current = camManager.getCamera();
+    // Start observing canvas element
+    if (canvasRef.current) {
+      resizeObserver.observe(canvasRef.current);
     }
 
     // Add lighting
@@ -254,12 +268,35 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      renderer.dispose();
-      if (camManager) {
-        camManager.dispose();
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+      }
+      if (cameraManager) {
+        cameraManager.dispose();
       }
     };
   }, [onCanvasRef]);
+
+  /**
+   * Handle container resize to update renderer size
+   */
+  useEffect(() => {
+    if (!canvasRef.current || !rendererRef.current) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        rendererRef.current!.setSize(width, height);
+        if (cameraManager) {
+          cameraManager.updateAspectRatio(width, height);
+        }
+      }
+    });
+
+    resizeObserver.observe(canvasRef.current.parentElement!);
+
+    return () => resizeObserver.disconnect();
+  }, [isInitialized]);
 
   /**
    * Add VRM to scene when loaded
@@ -396,7 +433,8 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     <div className="relative w-full h-full bg-gray-900">
       <canvas
         ref={canvasRef}
-        className="w-full h-full block"
+        className="w-full h-full block touch-none"
+        style={{ touchAction: 'none' }}
       />
 
       {/* Loading indicator */}
