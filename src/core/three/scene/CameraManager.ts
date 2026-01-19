@@ -13,8 +13,6 @@ export class CameraManager {
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
   private renderer: THREE.WebGLRenderer;
-  private lastUpdateTime = 0;
-  private isDragging = false;
 
   constructor(canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
@@ -33,22 +31,13 @@ export class CameraManager {
     // Set default camera position
     this.camera.position.set(0, 1.5, 2);
     this.controls.target.set(0, 1, 0);
-
+    
     // Update controls
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     this.controls.screenSpacePanning = false;
     this.controls.minDistance = 0.5;
     this.controls.maxDistance = 10;
-
-    // Track interaction state to optimize control updates
-    this.controls.addEventListener('start', () => {
-      this.isDragging = true;
-    });
-    
-    this.controls.addEventListener('end', () => {
-      this.isDragging = false;
-    });
 
     // Handle window resize
     window.addEventListener('resize', this.handleResize);

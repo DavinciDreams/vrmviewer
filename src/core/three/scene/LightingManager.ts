@@ -123,16 +123,11 @@ export class LightingManager {
       this.rimLight = undefined;
     }
 
-    this.ambientLight.dispose();
-    this.directionalLight.dispose();
-    
-    if (this.rimLight) {
-      this.rimLight.dispose();
-    }
+    // Note: THREE.DirectionalLight doesn't have a dispose method
+    // Only the renderer needs to be disposed
   }
 }
 
-/**
- * Create singleton instance
- */
-export const lightingManager = new LightingManager();
+// Note: LightingManager requires scene and renderer arguments
+// Cannot create singleton without them
+// Use getLightingManager(scene, renderer) to create an instance

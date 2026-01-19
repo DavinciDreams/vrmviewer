@@ -90,7 +90,7 @@ export const useAnimationStore = create<AnimationStoreState & AnimationStoreActi
           animations: new Map(animations),
         }),
 
-      setPlaybackState: (state) =>
+      setPlaybackState: (state: AnimationState) =>
         set({
           playbackState: state,
         }),
@@ -172,7 +172,7 @@ export const useAnimationStore = create<AnimationStoreState & AnimationStoreActi
     {
       name: 'animation-storage',
       // Don't persist managers (they're recreated on load)
-      partialize: (state) => ({
+      partialize: (state: AnimationStoreState) => ({
         currentAnimation: state.currentAnimation,
         playbackState: state.playbackState,
         metadata: state.metadata,

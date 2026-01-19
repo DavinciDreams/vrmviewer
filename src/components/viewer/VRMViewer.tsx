@@ -3,7 +3,7 @@
  * Main 3D viewer component with animation support
  */
 
-import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
 import { useVRMStore } from '../../store/vrmStore';

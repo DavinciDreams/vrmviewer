@@ -17,7 +17,6 @@ import {
  * Handles VRMA export functionality
  */
 export class VRMAExporter {
-  private gltfExporter: GLTFExporter;
 
   constructor() {
     this.gltfExporter = new GLTFExporter();

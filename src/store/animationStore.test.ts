@@ -3,6 +3,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import * as THREE from 'three';
 import { useAnimationStore } from './animationStore'
 
 describe('animationStore', () => {
@@ -99,7 +100,7 @@ describe('animationStore', () => {
         weight: 1,
         fadeIn: 0.5,
         fadeOut: 0.5,
-        blendMode: 'normal',
+        blendMode: THREE.NormalAnimationBlendMode,
       }
 
       useAnimationStore.getState().setPlaybackState(playbackState)

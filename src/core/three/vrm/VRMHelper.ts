@@ -69,7 +69,8 @@ export class VRMHelper {
    */
   public static getBlendShapeValue(vrm: VRM, name: string): BlendShapeValue {
     if (!vrm.expressionManager) return 0;
-    return vrm.expressionManager.getValue(name);
+    const value = vrm.expressionManager.getValue(name);
+    return value !== null ? value : 0;
   }
 
   /**
@@ -90,7 +91,8 @@ export class VRMHelper {
     const expressionNames = Object.keys(vrm.expressionManager.expressions);
     
     expressionNames.forEach((name) => {
-      result[name] = vrm.expressionManager!.getValue(name);
+      const value = vrm.expressionManager!.getValue(name);
+      result[name] = value !== null ? value : 0;
     });
     
     return result;

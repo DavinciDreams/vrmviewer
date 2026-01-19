@@ -1,16 +1,14 @@
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 
 export interface DropZoneProps {
   onDrop: (files: File[]) => void;
-  acceptedFormats?: string[];
   maxSize?: number;
   disabled?: boolean;
 }
 
 export const DropZone: React.FC<DropZoneProps> = ({
   onDrop,
-  acceptedFormats = ['.vrm', '.glb', '.gltf', '.fbx', '.bvh', '.vrma'],
   maxSize = 500 * 1024 * 1024, // 500MB
   disabled = false,
 }) => {

@@ -42,7 +42,6 @@ export class BlendShapeManager {
   private targets: Map<string, BlendShapeTarget> = new Map();
   private currentExpression: ExpressionState | null = null;
   private currentLipSync: LipSyncState | null = null;
-  private interpolationFactor: number = 0.1;
 
   /**
    * Initialize blend shape manager with a VRM model
@@ -161,7 +160,7 @@ export class BlendShapeManager {
   public clearExpression(): void {
     if (this.currentExpression) {
       // Fade out current expression
-      Object.entries(this.currentExpression.blendShapes).forEach(([name, value]) => {
+      Object.entries(this.currentExpression.blendShapes).forEach(([name]) => {
         this.setBlendShape(name, 0);
       });
     }

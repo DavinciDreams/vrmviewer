@@ -85,6 +85,11 @@ describe('exportStore', () => {
 
       useExportStore.getState().setOptions(existingOptions)
 
+      const newOptions = {
+        format: 'vrm' as const,
+        quality: 'ultra' as const,
+      }
+
       useExportStore.getState().setOptions(newOptions)
 
       const state = useExportStore.getState()
@@ -107,8 +112,8 @@ describe('exportStore', () => {
   describe('resetOptions', () => {
     it('should reset to default options', () => {
       const customOptions = {
-        format: 'vrm',
-        quality: 'low',
+        format: 'vrm' as const,
+        quality: 'low' as const,
       }
 
       useExportStore.getState().setOptions(customOptions)
@@ -221,8 +226,8 @@ describe('exportStore', () => {
   describe('reset', () => {
     it('should reset to initial state', () => {
       const customOptions = {
-        format: 'vrm',
-        quality: 'low',
+        format: 'vrm' as const,
+        quality: 'low' as const,
       }
 
       useExportStore.getState().setOptions(customOptions)

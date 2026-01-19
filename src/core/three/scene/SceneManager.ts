@@ -106,8 +106,9 @@ export class SceneManager {
   /**
    * Update scene
    */
-  update(): void {
-    this.renderer.render(this.scene);
+  update(camera?: THREE.Camera): void {
+    if (!camera) return;
+    this.renderer.render(this.scene, camera);
   }
 
   /**
@@ -127,7 +128,12 @@ export class SceneManager {
   dispose(): void {
     this.clearModels();
     this.renderer.dispose();
-    this.scene.dispose();
+    
+    // Clear scene children
+    while (this.scene.children.length > 0) {
+      const object = this.scene.children[0];
+      this.scene.remove(object);
+    }
     
     window.removeEventListener('resize', this.handleResize);
   }

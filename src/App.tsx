@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
 import { VRMViewer, VRMViewerHandle } from './components/viewer/VRMViewer';
 import { ThumbnailCapture } from './components/viewer/ThumbnailCapture';
@@ -24,6 +24,21 @@ import { vrmaLoader } from './core/three/loaders/VRMALoader';
 import { cameraManager } from './core/three/scene/CameraManager';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
 import { parseDataUrl } from './utils/thumbnailUtils';
+import type { AnimationRecord, ModelRecord } from './types/database.types';
+
+/**
+ * Type guard to check if result has data property
+ */
+function hasData<T>(result: unknown): result is { data: T } {
+  return typeof result === 'object' && result !== null && 'data' in result && 'success' in result;
+}
+
+/**
+ * Type guard to check if result has success and data properties
+ */
+function hasSuccessAndData<T>(result: unknown): result is { success: boolean; data: T } {
+  return typeof result === 'object' && result !== null && 'success' in result && 'data' in result && (result as { success: boolean }).success === true;
+}
 
 function App() {
   // VRM
@@ -122,14 +137,14 @@ function App() {
       // Load animation
       if (extension === 'bvh') {
         const result = await bvhLoader.loadFromFile(file);
-        if (result.success && result.data) {
+          if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
           setPendingAnimationFile(file);
           setPendingAnimationClip(result.data.animation);
           setIsAnimationEditorOpen(true);
         }
       } else if (extension === 'vrma') {
         const result = await vrmaLoader.loadFromFile(file);
-        if (result.success && result.data) {
+          if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
           setPendingAnimationFile(file);
           setPendingAnimationClip(result.data.animation);
           setIsAnimationEditorOpen(true);
@@ -151,7 +166,8 @@ function App() {
       setIsSaving(true);
       
       // Generate unique name
-      const existingNames = (await models.getAll()).data?.map((m: any) => m.name) || [];
+      const getAllResult = await models.getAll();
+      const existingNames = hasData(getAllResult) ? getAllResult.data.map((m: { name: string }) => m.name) : [];
       const modelName = generateUniqueName(
         metadata?.name || 'model',
         existingNames
@@ -173,7 +189,7 @@ function App() {
         size: unsavedModelData.byteLength,
       });
       
-      if (!result.success || !result.data) {
+      if (!hasSuccessAndData<{ uuid: string }>(result)) {
         console.error('Failed to save model:', result.error);
         return;
       }
@@ -246,14 +262,15 @@ function App() {
   /**
    * Handle animation save
    */
-  const handleAnimationSave = useCallback(async (id: string, name: string, description: string) => {
+  const handleAnimationSave = useCallback(async (_id: string, name: string, description: string) => {
     if (!pendingAnimationClip || !pendingAnimationFile) return;
     
     // Generate descriptive name if not provided
     const descriptiveName = name || generateDescriptiveName(description);
     
     // Check for conflicts and add number if needed
-    const existingNames = (await animations.getAll()).data?.map(a => a.name) || [];
+    const getAllResult = await animations.getAll();
+    const existingNames = hasData<AnimationRecord[]>(getAllResult) && getAllResult.data ? getAllResult.data.map((a: AnimationRecord) => a.name) : [];
     const uniqueName = generateUniqueName(descriptiveName, existingNames);
     
     // Save animation to database
@@ -351,7 +368,7 @@ function App() {
     setCurrentModelUuid(modelId);
     
     const result = await models.getByUuid(modelId);
-    if (result.success && result.data) {
+    if (hasSuccessAndData<ModelRecord>(result)) {
       const modelRecord = result.data;
       // Create a File from ArrayBuffer data
       const file = new File([modelRecord.data], `${modelRecord.name}.${modelRecord.format}`, {
@@ -379,7 +396,7 @@ function App() {
    */
   const handleModelUpdate = useCallback(async (modelId: string, name: string, description: string) => {
     const result = await models.getByUuid(modelId);
-    if (result.success && result.data) {
+    if (hasSuccessAndData<ModelRecord>(result)) {
       const updateResult = await models.update(modelId, {
         name,
         displayName: name,

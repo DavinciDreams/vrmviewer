@@ -46,7 +46,7 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
         
         if (records) {
           // Transform AnimationRecord to AnimationData
-          const transformedData: AnimationData[] = records.map((record) => ({
+          const transformedData: AnimationData[] = records.map((record: any) => ({
             id: record.uuid,
             name: record.name,
             description: record.description,

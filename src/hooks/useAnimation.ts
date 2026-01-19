@@ -3,10 +3,9 @@
  * Custom hook for animation loading and playback management
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { loaderManager } from '../core/three/loaders/LoaderManager';
 import { useAnimationStore } from '../store/animationStore';
-import { getFileInfo, validateAnimationFile } from '../utils/fileUtils';
 
 /**
  * useAnimation Hook
@@ -19,7 +18,6 @@ export function useAnimation() {
     error,
     metadata,
     setAnimation,
-    setAnimations,
     setPlaybackState,
     setError,
     clearError,
@@ -37,7 +35,7 @@ export function useAnimation() {
     clearAnimation();
 
     const result = await loaderManager.loadFromURL(url, {
-      progressCallback: (progress) => {
+      _progressCallback: (progress) => {
         // Progress updates can be handled here if needed
       },
     });
@@ -151,11 +149,12 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState({
+    setPlaybackState((previousState) => ({
+      ...previousState,
       isPlaying: false,
       isPaused: false,
       currentTime: 0,
-    });
+    }));
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**
@@ -166,9 +165,10 @@ export function useAnimation() {
       return;
     }
 
-    setPlaybackState({
+    setPlaybackState((previousState) => ({
+      ...previousState,
       currentTime: time,
-    });
+    }));
   }, [currentAnimation, playbackState, setPlaybackState]);
 
   /**

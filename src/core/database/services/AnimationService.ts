@@ -333,7 +333,7 @@ export class AnimationService {
       return [];
     }
 
-    const categories = new Set(result.data.map((anim) => anim.category).filter(Boolean));
+    const categories = new Set(result.data.map((anim) => anim.category).filter((cat): cat is string => cat !== undefined && cat !== null && cat !== ''));
     return Array.from(categories);
   }
 

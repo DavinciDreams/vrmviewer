@@ -3,14 +3,14 @@
  * Provides export functionality for components
  */
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
+import * as THREE from 'three';
 import { getVRMExporter } from '../core/three/export/VRMExporter';
 import { getVRMAExporter } from '../core/three/export/VRMAExporter';
 import {
   ExportResult,
   ExportProgress,
 } from '../types/export.types';
-import { downloadFile } from '../utils/exportUtils';
 
 /**
  * Export Hook
@@ -21,9 +21,9 @@ export function useExport() {
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
   const [exportOptions, setExportOptions] = useState({
-    format: 'vrm',
-    quality: 'medium',
-    compression: 'none',
+    format: 'vrm' as const,
+    quality: 'medium' as const,
+    compression: 'none' as const,
     binary: true,
     pretty: false,
     generateThumbnail: false,
@@ -42,9 +42,23 @@ export function useExport() {
   const vrmaExporter = getVRMAExporter();
 
   /**
+   * Download file helper
+   */
+  const downloadFile = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  /**
    * Export model as VRM
    */
-  const exportVRM = async (model: THREE.Group, options?: Record<string, unknown>) => {
+  const exportVRM = async (model: THREE.Group) => {
     setIsExporting(true);
     setExportProgress({
       stage: 'INITIALIZING',
@@ -56,7 +70,13 @@ export function useExport() {
 
     const fullOptions = {
       ...exportOptions,
-      format: 'vrm',
+      format: 'vrm' as const,
+      version: '0.0' as const,
+      metadata: {
+        title: 'Untitled',
+        version: '1.0',
+        author: '',
+      },
     };
 
     const result = await vrmExporter.exportVRM(model, fullOptions, (progress) => {
@@ -66,11 +86,9 @@ export function useExport() {
     setExportProgress(null);
     setIsExporting(false);
     setExportResult(result);
-
     if (result.success && result.data) {
       downloadFile(result.data.blob, result.data.filename);
     }
-
     return result;
   };
 
@@ -89,8 +107,8 @@ export function useExport() {
 
     const fullOptions = {
       ...exportOptions,
-      format: 'vrma',
-      animationName: options?.metadata?.title || 'Untitled Animation',
+      format: 'vrma' as const,
+      animationName: ((options?.metadata as Record<string, unknown>)?.title as string) || 'Untitled Animation',
     };
 
     const result = await vrmaExporter.exportVRMA(animation, fullOptions, (progress) => {
@@ -100,11 +118,9 @@ export function useExport() {
     setExportProgress(null);
     setIsExporting(false);
     setExportResult(result);
-
     if (result.success && result.data) {
       downloadFile(result.data.blob, result.data.filename);
     }
-
     return result;
   };
 

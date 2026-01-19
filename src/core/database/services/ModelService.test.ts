@@ -24,7 +24,7 @@ describe('ModelService', () => {
   describe('model management', () => {
     it('should save model', async () => {
       const service = new ModelService()
-      const mockModel = {
+      const _mockModel = {
         vrm: {} as any,
         metadata: {
           title: 'Test Model',
@@ -38,17 +38,26 @@ describe('ModelService', () => {
         firstPerson: undefined,
         scene: {} as any,
         skeleton: {} as any,
+        size: 0,
+        name: 'Test Model',
+        displayName: 'Test Model',
+        format: 'vrm' as const,
+        tags: [],
+        data: new ArrayBuffer(0),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: '0.0' as const,
       }
-
-      await service.saveModel(mockModel)
-
+ 
+      await service.saveModel(_mockModel)
+ 
       // Test that the method doesn't throw
-      expect(service.saveModel(mockModel)).resolves.not.toThrow()
+      expect(service.saveModel(_mockModel)).resolves.not.toThrow()
     })
 
     it('should load model', async () => {
       const service = new ModelService()
-      const mockModel = {
+      const _mockModel = {
         vrm: {} as any,
         metadata: {
           title: 'Test Model',
@@ -62,6 +71,15 @@ describe('ModelService', () => {
         firstPerson: undefined,
         scene: {} as any,
         skeleton: {} as any,
+        size: 0,
+        name: 'Test Model',
+        displayName: 'Test Model',
+        format: 'vrm' as const,
+        tags: [],
+        data: new ArrayBuffer(0),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: '0.0' as const,
       }
 
       const result = await service.loadModel('test-id')

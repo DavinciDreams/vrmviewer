@@ -397,9 +397,11 @@ describe('exportUtils', () => {
         data: {
           filename: 'test.vrm',
           size: 1024 * 1024,
-          format: 'vrm',
+          format: 'vrm' as const,
+          blob: new Blob(['test']),
+          url: 'blob:http://test',
         },
-      }
+      } as { success: boolean; data: { filename: string; size: number; format: 'vrm'; blob: Blob; url: string; } }
       const summary = createExportSummary(result)
 
       expect(summary).toContain('File: test.vrm')
@@ -413,10 +415,12 @@ describe('exportUtils', () => {
         data: {
           filename: 'test.vrma',
           size: 1024 * 1024,
-          format: 'vrma',
+          format: 'vrma' as const,
           duration: 5.5,
+          blob: new Blob(['test']),
+          url: 'blob:http://test',
         },
-      }
+      } as { success: boolean; data: { filename: string; size: number; format: 'vrma'; duration: number; blob: Blob; url: string; } }
       const summary = createExportSummary(result)
 
       expect(summary).toContain('Duration: 5.50s')
@@ -425,7 +429,7 @@ describe('exportUtils', () => {
     it('should return failure message for failed export', () => {
       const result = {
         success: false,
-        error: { type: 'validation' as const, message: 'Invalid data' },
+        error: { type: 'INVALID_FORMAT' as const, message: 'Invalid data' },
       }
       const summary = createExportSummary(result)
 
@@ -439,7 +443,7 @@ describe('exportUtils', () => {
       const tracker = new ExportProgressTracker(callback)
 
       tracker.update({
-        stage: 'preparing',
+        stage: 'PREPARING',
         progress: 50,
         message: 'Preparing',
         currentStep: 1,

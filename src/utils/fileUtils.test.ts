@@ -78,7 +78,7 @@ describe('fileUtils', () => {
     it('should handle file read error', async () => {
       const file = new File(['test'], 'test.txt', { type: 'text/plain' })
       // Mock FileReader to error
-      vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function () {
+      vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
         setTimeout(() => {
           this.onerror?.({} as ProgressEvent<FileReader>)
         }, 0)

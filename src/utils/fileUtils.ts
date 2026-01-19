@@ -9,7 +9,6 @@ import {
   getFileTypeFromExtension,
   isFileSupported,
   validateFileSize,
-  formatFileSize,
 } from '../constants/formats';
 
 /**
@@ -49,8 +48,8 @@ export function getFileInfo(file: File): {
   lastModified: Date;
 } {
   const extension = getFileExtension(file.name);
-  const format = getFormatFromExtension(extension);
-  const type = getFileTypeFromExtension(extension);
+  const format = getFormatFromExtension(extension) || 'unknown';
+  const type = getFileTypeFromExtension(extension) || 'model';
 
   return {
     name: file.name,
@@ -74,7 +73,8 @@ export function validateModelFile(file: File): { valid: boolean; error?: string 
     };
   }
 
-  const sizeValid = validateFileSize(file, getFormatFromExtension(extension));
+  const format = getFormatFromExtension(extension);
+  const sizeValid = validateFileSize(file, format ?? undefined);
 
   if (!sizeValid) {
     return {
@@ -99,7 +99,8 @@ export function validateAnimationFile(file: File): { valid: boolean; error?: str
     };
   }
 
-  const sizeValid = validateFileSize(file, getFormatFromExtension(extension));
+  const format = getFormatFromExtension(extension);
+  const sizeValid = validateFileSize(file, format ?? undefined);
 
   if (!sizeValid) {
     return {

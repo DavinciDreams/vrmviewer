@@ -127,7 +127,7 @@ export function createBlinkAnimationClip(vrm: VRM, duration: number = 0.15): Ani
   const blinkShapes = ['blinkLeft', 'blinkRight'];
 
   blinkShapes.forEach((shapeName) => {
-    if (!vrm.expressionManager!.hasExpression(shapeName)) return;
+    if (!(shapeName in vrm.expressionManager!.expressions)) return;
 
     const times = [0, duration * 0.5, duration];
     const values = [0, 1, 0];
@@ -163,7 +163,7 @@ export function createLipSyncAnimationClip(
 
   // Create tracks for each shape
   shapeKeyframes.forEach((keyframes, shapeName) => {
-    if (!vrm.expressionManager!.hasExpression(shapeName)) return;
+    if (!(shapeName in vrm.expressionManager!.expressions)) return;
 
     const times = keyframes.map((kf) => kf.time).sort((a, b) => a - b);
     const values = times.map((time) => {
