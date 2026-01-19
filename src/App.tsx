@@ -83,7 +83,16 @@ function App() {
   
   // Thumbnail service
   const thumbnailService = getThumbnailService();
-
+  const [autoCapturedThumbnail, setAutoCapturedThumbnail] = useState<string | null>(null);
+  
+  /**
+   * Handle auto-captured thumbnail from VRMViewer
+   */
+  const handleAutoThumbnailCaptured = useCallback((thumbnail: string) => {
+    setAutoCapturedThumbnail(thumbnail);
+    console.log('Auto-captured thumbnail from viewer');
+  }, []);
+  
   /**
    * Initialize idle animations when model is loaded
    */
@@ -94,7 +103,7 @@ function App() {
       stopIdleAnimation();
     }
   }, [currentModel, currentAnimation, startIdleAnimation, stopIdleAnimation]);
-
+  
   /**
    * Handle file drop
    */
@@ -124,6 +133,7 @@ function App() {
       setUnsavedModelFile(null);
       setUnsavedModelData(null);
       setUnsavedThumbnailData(null);
+      setAutoCapturedThumbnail(null);
       
       // Load model
       const model = await loadModelFromFile(file);
@@ -138,21 +148,21 @@ function App() {
       if (extension === 'bvh') {
         const result = await bvhLoader.loadFromFile(file);
           if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
-          setPendingAnimationFile(file);
-          setPendingAnimationClip(result.data.animation);
-          setIsAnimationEditorOpen(true);
-        }
+            setPendingAnimationFile(file);
+            setPendingAnimationClip(result.data.animation);
+            setIsAnimationEditorOpen(true);
+          }
       } else if (extension === 'vrma') {
         const result = await vrmaLoader.loadFromFile(file);
           if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
-          setPendingAnimationFile(file);
-          setPendingAnimationClip(result.data.animation);
-          setIsAnimationEditorOpen(true);
-        }
+            setPendingAnimationFile(file);
+            setPendingAnimationClip(result.data.animation);
+            setIsAnimationEditorOpen(true);
+          }
       }
     }
   }, [loadModelFromFile, metadata, models]);
-
+  
   /**
    * Handle save model (manual save from unsaved state)
    */
@@ -198,9 +208,9 @@ function App() {
       setCurrentModelUuid(modelUuid);
       
       // Capture and save thumbnail if not already captured
-      if (!unsavedThumbnailData && vrmViewerRef.current) {
-        const thumbnailDataUrl = await vrmViewerRef.current!.captureThumbnail();
-        const { format, data } = parseDataUrl(thumbnailDataUrl);
+      const thumbnailToSave = unsavedThumbnailData || autoCapturedThumbnail;
+      if (thumbnailToSave && vrmViewerRef.current) {
+        const { format, data } = parseDataUrl(thumbnailToSave);
         
         const thumbnailResult = await thumbnailService.saveThumbnail({
           uuid: crypto.randomUUID(),
@@ -250,6 +260,7 @@ function App() {
       setUnsavedModelFile(null);
       setUnsavedModelData(null);
       setUnsavedThumbnailData(null);
+      setAutoCapturedThumbnail(null);
       
       console.log('Model saved:', modelName);
     } catch (error) {
@@ -257,7 +268,7 @@ function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, metadata, models]);
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models]);
   
   /**
    * Handle animation save
@@ -307,7 +318,7 @@ function App() {
     setPendingAnimationClip(null);
     setIsAnimationEditorOpen(false);
   }, [pendingAnimationClip, pendingAnimationFile, animations, loadAnimationFromFile, playAnimation, play]);
-
+  
   /**
    * Handle animation play from library
    */
@@ -325,7 +336,7 @@ function App() {
       play();
     }
   }, [animations, loadAnimationFromFile, playAnimation, play]);
-
+  
   /**
    * Handle animation delete from library
    */
@@ -337,7 +348,7 @@ function App() {
       console.error('Failed to delete animation:', result.error);
     }
   }, [animations]);
-
+  
   /**
    * Handle animation update from library
    */
@@ -354,7 +365,7 @@ function App() {
       }
     }
   }, [animations]);
-
+  
   /**
    * Handle model load from library
    */
@@ -378,7 +389,7 @@ function App() {
       await loadModelFromFile(file);
     }
   }, [models, loadModelFromFile]);
-
+  
   /**
    * Handle model delete from library
    */
@@ -387,7 +398,7 @@ function App() {
     if (result.success) {
       console.log('Model deleted:', modelId);
       
-      // Clear the current model from viewer if the deleted model is currently loaded
+      // Clear current model from viewer if deleted model is currently loaded
       if (currentModelUuid === modelId) {
         clearCurrentModel();
         setCurrentModelUuid(null);
@@ -399,7 +410,7 @@ function App() {
       return { success: false, error: result.error };
     }
   }, [models, currentModelUuid, clearCurrentModel]);
-
+  
   /**
    * Handle model update from library
    */
@@ -416,7 +427,7 @@ function App() {
       }
     }
   }, [models]);
-
+  
   /**
    * Handle export
    */
@@ -427,12 +438,12 @@ function App() {
       if (options.format === 'vrm') {
         // Export VRM
         const result = await exportVRM(currentModel.scene);
-
+ 
         if (!result.success) {
           console.error('VRM export failed:', result.error);
           return;
         }
-
+ 
         console.log('VRM export successful:', result.data);
       } else if (options.format === 'vrma' && currentAnimation) {
         // Export VRMA
@@ -448,12 +459,12 @@ function App() {
           },
           quality: options.quality,
         });
-
+ 
         if (!result.success) {
           console.error('VRMA export failed:', result.error);
           return;
         }
-
+ 
         console.log('VRMA export successful:', result.data);
       }
       
@@ -462,7 +473,7 @@ function App() {
       console.error('Export failed:', err);
     }
   }, [currentModel, currentAnimation, exportVRM, exportVRMA]);
-
+  
   /**
    * Handle thumbnail capture (manual re-capture)
    */
@@ -516,7 +527,7 @@ function App() {
       setIsCapturing(false);
     }
   }, [currentModelUuid, unsavedModelFile, models]);
-
+  
   /**
    * Handle play
    */
@@ -526,7 +537,7 @@ function App() {
     }
     play();
   }, [currentAnimation, playAnimation, play]);
-
+  
   /**
    * Handle pause
    */
@@ -534,7 +545,7 @@ function App() {
     pauseAnimation();
     pause();
   }, [pauseAnimation, pause]);
-
+  
   /**
    * Handle stop
    */
@@ -542,14 +553,14 @@ function App() {
     stopAnimation();
     stop();
   }, [stopAnimation, stop]);
-
+  
   /**
    * Handle remove file
    */
   const handleRemoveFile = useCallback((index: number) => {
     setDroppedFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
-
+  
   /**
    * Handle reset pose
    */
@@ -559,7 +570,7 @@ function App() {
       clearExpression();
     }
   }, [currentModel, clearExpression]);
-
+  
   /**
    * Handle reset camera
    */
@@ -568,7 +579,7 @@ function App() {
       cameraManager.resetCamera();
     }
   }, []);
-
+  
   /**
    * Handle visibility toggle
    */
@@ -578,7 +589,7 @@ function App() {
       setIsModelVisible(vrmViewerRef.current.isVisible());
     }
   }, []);
-
+  
   /**
    * Handle wireframe toggle
    */
@@ -588,10 +599,10 @@ function App() {
       setIsModelWireframe(vrmViewerRef.current.isWireframe());
     }
   }, []);
-
+  
   const hasModel = !!currentModel;
   const hasAnimation = !!currentAnimation;
-
+  
   return (
     <MainLayout
       onAnimationPlay={handleAnimationPlay}
@@ -605,7 +616,10 @@ function App() {
       <div className="relative flex flex-col h-full">
         {/* Viewer */}
         <div className="flex-1 relative">
-          <VRMViewer ref={vrmViewerRef} />
+          <VRMViewer
+            ref={vrmViewerRef}
+            onThumbnailCaptured={handleAutoThumbnailCaptured}
+          />
           
           {hasModel && (
             <>
@@ -677,7 +691,7 @@ function App() {
             </>
           )}
         </div>
-
+        
         {/* Drop Zone Overlay (when no model is loaded) */}
         {!hasModel && (
           <div className="absolute inset-0 flex items-center justify-center p-8">
@@ -706,19 +720,19 @@ function App() {
             </div>
           </div>
         )}
-
+        
         {/* Loading indicator */}
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
             <div className="text-center">
               <svg className="w-16 h-16 text-blue-500 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357 2m15.357 2H15" />
               </svg>
               <p className="text-gray-300 text-sm">Loading model...</p>
             </div>
           </div>
         )}
-
+        
         {/* Error indicator */}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
@@ -738,7 +752,7 @@ function App() {
           </div>
         )}
       </div>
-
+      
       {/* Export Dialog */}
       <ExportDialog
         isOpen={isExportDialogOpen}
@@ -747,7 +761,7 @@ function App() {
         defaultName={metadata?.name || 'model_export'}
         isExporting={false}
       />
-
+      
       {/* Animation Editor Dialog */}
       <AnimationEditor
         isOpen={isAnimationEditorOpen}
@@ -764,4 +778,3 @@ function App() {
 }
 
 export default App;
-

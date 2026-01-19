@@ -11,6 +11,7 @@ import { usePlaybackStore } from '../../store/playbackStore';
 import { useAnimationStore } from '../../store/animationStore';
 import { initializeCameraManager, cameraManager } from '../../core/three/scene/CameraManager';
 import { captureThumbnail } from '../../utils/thumbnailUtils';
+import { useThumbnailCapture } from '../../hooks/useThumbnailCapture';
 
 /**
  * VRMViewer imperative handle
@@ -21,6 +22,7 @@ export interface VRMViewerHandle {
   isVisible: () => boolean;
   isWireframe: () => boolean;
   captureThumbnail: (options?: { size?: number; format?: 'png' | 'jpeg' | 'webp' }) => Promise<string>;
+  captureAndSaveThumbnail: (modelUuid: string, modelName: string) => Promise<{ success: boolean; thumbnail?: string; error?: string }>;
 }
 
 /**
@@ -30,6 +32,13 @@ export interface VRMViewerProps {
   onCanvasRef?: (canvas: HTMLCanvasElement) => void;
   onVRMLoaded?: (vrm: VRM) => void;
   onAnimationFrame?: () => void;
+  onThumbnailCaptured?: (thumbnail: string) => void;
+  autoCaptureThumbnail?: boolean;
+  thumbnailConfig?: {
+    size?: number;
+    format?: 'png' | 'jpeg' | 'webp';
+    quality?: number;
+  };
 }
 
 /**
@@ -39,6 +48,9 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   onCanvasRef,
   onVRMLoaded,
   onAnimationFrame,
+  onThumbnailCaptured,
+  autoCaptureThumbnail = true,
+  thumbnailConfig,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -47,17 +59,26 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const animationFrameRef = useRef<number | null>(null);
 
   // Store state
-  const { currentModel, isLoading: vrmLoading } = useVRMStore();
+  const { currentModel, isLoading: vrmLoading, metadata } = useVRMStore();
   const {
     isPlaying,
     loop,
   } = usePlaybackStore();
+
+  // Thumbnail capture hook
+  const { capture } = useThumbnailCapture({
+    enabled: autoCaptureThumbnail,
+    size: thumbnailConfig?.size || 256,
+    format: thumbnailConfig?.format || 'png',
+    quality: thumbnailConfig?.quality || 0.9,
+  });
 
   // Local state
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [error] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const [isWireframe, setIsWireframe] = useState<boolean>(false);
+  const [previousModelUuid, setPreviousModelUuid] = useState<string | null>(null);
 
   /**
    * Apply visibility state to model
@@ -128,6 +149,43 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   };
 
   /**
+   * Capture and save thumbnail for current model
+   */
+  const captureAndSaveThumbnailMethod = async (
+    modelUuid: string,
+    modelName: string
+  ) => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
+      return {
+        success: false,
+        error: 'Viewer not initialized',
+      };
+    }
+
+    try {
+      const thumbnail = await capture(
+        rendererRef.current,
+        sceneRef.current,
+        cameraRef.current
+      );
+      
+      // Note: Actual saving to database should be handled by the caller
+      // This method just captures the thumbnail for the given model
+      console.log(`Thumbnail captured for model ${modelName} (${modelUuid})`);
+      
+      return {
+        success: true,
+        thumbnail,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  };
+
+  /**
    * Expose methods via ref
    */
   useImperativeHandle(ref, () => ({
@@ -136,7 +194,8 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     isVisible: () => isVisible,
     isWireframe: () => isWireframe,
     captureThumbnail: captureThumbnailMethod,
-  }), [isVisible, isWireframe]);
+    captureAndSaveThumbnail: captureAndSaveThumbnailMethod,
+  }), [isVisible, isWireframe, captureThumbnailMethod, captureAndSaveThumbnailMethod]);
 
   /**
    * Initialize Three.js scene
@@ -258,6 +317,40 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       }
     }
   }, [currentModel, isInitialized, onVRMLoaded]);
+
+  /**
+   * Auto-capture thumbnail when model is loaded
+   */
+  useEffect(() => {
+    if (currentModel && isInitialized && autoCaptureThumbnail && rendererRef.current && sceneRef.current && cameraRef.current) {
+      // Check if this is a new model (not just a re-render)
+      const currentModelUuid = metadata?.name || 'unknown';
+      if (previousModelUuid !== currentModelUuid) {
+        // Wait for model to be fully rendered before capturing
+        const captureTimer = setTimeout(async () => {
+          try {
+            const thumbnail = await capture(
+              rendererRef.current!,
+              sceneRef.current!,
+              cameraRef.current!
+            );
+            
+            // Notify parent that thumbnail was captured
+            if (onThumbnailCaptured) {
+              onThumbnailCaptured(thumbnail);
+            }
+            
+            // Update previous model UUID
+            setPreviousModelUuid(currentModelUuid);
+          } catch (error) {
+            console.error('Failed to auto-capture thumbnail:', error);
+          }
+        }, 200); // Wait 200ms for model to be rendered
+
+        return () => clearTimeout(captureTimer);
+      }
+    }
+  }, [currentModel, isInitialized, autoCaptureThumbnail, metadata, capture, onThumbnailCaptured, previousModelUuid]);
 
   /**
    * Animation loop
