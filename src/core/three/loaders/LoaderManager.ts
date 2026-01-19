@@ -132,27 +132,32 @@ export class LoaderManager {
       let result: UnifiedLoadResult;
 
       switch (format) {
-        case 'vrm':
+        case 'vrm': {
           const vrmResult = await vrmLoader.loadFromFile(file, options);
           result = this.convertVRMResult(vrmResult);
           break;
+        }
         case 'gltf':
-        case 'glb':
+        case 'glb': {
           const gltfResult = await gltfLoader.loadFromFile(file, options);
           result = this.convertGLTFResult(gltfResult);
           break;
-        case 'fbx':
+        }
+        case 'fbx': {
           const fbxResult = await fbxLoader.loadFromFile(file, options);
           result = this.convertFBXResult(fbxResult);
           break;
-        case 'bvh':
+        }
+        case 'bvh': {
           const bvhResult = await bvhLoader.loadFromFile(file, options);
           result = this.convertBVHResult(bvhResult);
           break;
-        case 'vrma':
+        }
+        case 'vrma': {
           const vrmaResult = await vrmaLoader.loadFromFile(file, options);
           result = this.convertVRMAResult(vrmaResult);
           break;
+        }
         default:
           throw new Error(`Unsupported format: ${format}`);
       }
@@ -190,27 +195,32 @@ export class LoaderManager {
       let result: UnifiedLoadResult;
 
       switch (format) {
-        case 'vrm':
+        case 'vrm': {
           const vrmResult = await vrmLoader.loadFromArrayBuffer(arrayBuffer, options);
           result = this.convertVRMResult(vrmResult);
           break;
+        }
         case 'gltf':
-        case 'glb':
+        case 'glb': {
           const gltfResult = await gltfLoader.loadFromArrayBuffer(arrayBuffer, options);
           result = this.convertGLTFResult(gltfResult);
           break;
-        case 'fbx':
-          const fbxResult = await fbxLoader.loadFromArrayBuffer(arrayBuffer, options);
+        }
+        case 'fbx': {
+          const fbxResult = await fbxLoader.loadFromArrayBuffer(arrayBuffer, filename, options);
           result = this.convertFBXResult(fbxResult);
           break;
-        case 'bvh':
+        }
+        case 'bvh': {
           const bvhResult = await bvhLoader.loadFromArrayBuffer(arrayBuffer, options);
           result = this.convertBVHResult(bvhResult);
           break;
-        case 'vrma':
+        }
+        case 'vrma': {
           const vrmaResult = await vrmaLoader.loadFromArrayBuffer(arrayBuffer, options);
           result = this.convertVRMAResult(vrmaResult);
           break;
+        }
         default:
           throw new Error(`Unsupported format: ${format}`);
       }
@@ -314,9 +324,10 @@ export class LoaderManager {
 
   /**
    * Convert FBX result to unified result
+   * Enhanced to support morph targets and blend shapes
    */
   private convertFBXResult(
-    result: { success: boolean; data?: { scene: THREE.Group; animations: THREE.AnimationClip[]; skeleton?: THREE.Skeleton; materials: THREE.Material[]; textures: THREE.Texture[] } }
+    result: { success: boolean; data?: { scene: THREE.Group; animations: THREE.AnimationClip[]; skeleton?: THREE.Skeleton; materials: THREE.Material[]; textures: THREE.Texture[]; morphTargets?: Map<string, THREE.MorphTarget[]>; blendShapes?: Map<string, THREE.MorphTarget[]>; metadata?: { version?: number; author?: string; creationDate?: string; application?: string; unitScale?: number; upAxis?: 'X' | 'Y' | 'Z'; frontAxis?: 'X' | 'Y' | 'Z' } } }
   ): UnifiedLoadResult {
     if (!result.success || !result.data) {
       return {
@@ -325,18 +336,34 @@ export class LoaderManager {
       };
     }
 
-    const { scene, animations } = result.data;
+    const { scene, animations, morphTargets, blendShapes, metadata: fbxMetadata } = result.data;
+
+    // Log additional features loaded
+    if (morphTargets && morphTargets.size > 0) {
+      console.log(`FBX: Loaded ${morphTargets.size} mesh(es) with morph targets`);
+    }
+    if (blendShapes && blendShapes.size > 0) {
+      console.log(`FBX: Loaded ${blendShapes.size} blend shape(s)`);
+    }
+
+    // Build enhanced metadata
+    const enhancedMetadata = {
+      name: fbxMetadata?.author || scene.name || 'FBX Model',
+      format: 'fbx' as const,
+      type: 'model' as const,
+      animations: animations.length,
+      hasSkeleton: !!result.data.skeleton,
+      hasMorphTargets: !!morphTargets && morphTargets.size > 0,
+      hasBlendShapes: !!blendShapes && blendShapes.size > 0,
+      fbxMetadata,
+    };
 
     return {
       success: true,
       data: {
         model: scene,
         animation: animations[0],
-        metadata: {
-          name: 'FBX Model',
-          format: 'fbx',
-          type: 'model',
-        },
+        metadata: enhancedMetadata,
       },
     };
   }

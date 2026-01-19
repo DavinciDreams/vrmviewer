@@ -5,6 +5,8 @@ A modern, web-based VRM (VRoid Model) viewer with animation support, built with 
 ## Features
 
 - **Drag and Drop Support**: Simply drag and drop model files (VRM, GLB, GLTF, FBX) and animation files (BVH, VRMA) to load them
+- **DAM Integration**: Load models and animations directly from URLs via query parameters for backend-driven embedding
+- **URL Configuration**: Control viewer behavior through URL parameters (autoplay, camera, speed, etc.)
 - **Idle Animations**: Automatic breathing and blinking animations when no active animation is playing
 - **Animation Playback**: Full playback controls including play, pause, stop, speed adjustment, and loop toggle
 - **Blend Shape Support**: Control facial expressions and blend shapes
@@ -65,6 +67,35 @@ http://localhost:5173
 1. Drag and drop a model file (VRM, GLB, GLTF, or FBX) onto the viewer
 2. The model will automatically load and be displayed in the 3D viewer
 3. Use the model controls to adjust visibility and wireframe mode
+
+**Method 2: URL Query Parameters (DAM Integration)**
+
+Load models directly from URLs by adding query parameters:
+
+```html
+<!-- Load a model from URL -->
+https://your-viewer-url.com/?model=https://your-dam.com/model.vrm
+
+<!-- Load model with animation and autoplay -->
+https://your-viewer-url.com/?model=https://your-dam.com/model.vrm&animation=https://your-dam.com/anim.vrma&autoplay=true
+
+<!-- Full configuration example -->
+https://your-viewer-url.com/?model=https://your-dam.com/model.vrm&animation=https://your-dam.com/anim.vrma&autoplay=true&loop=true&camera=preset:front&speed=1.5
+```
+
+**Supported URL Parameters:**
+- `model` - URL of model file (VRM, GLB, GLTF, FBX)
+- `animation` - URL of animation file (VRMA, BVH)
+- `autoplay` - Automatically start playback (true/false)
+- `loop` - Enable loop mode (true/false)
+- `camera` - Camera position or preset (e.g., `preset:front` or `0,1.5,3`)
+- `speed` - Playback speed (number)
+- `background` - Background color (hex)
+- `lighting` - Lighting configuration
+- `wireframe` - Enable wireframe mode (true/false)
+- `visible` - Model visibility (true/false)
+
+See [`docs/DAM_INTEGRATION.md`](docs/DAM_INTEGRATION.md) for complete DAM integration documentation.
 
 ### Loading Animations
 

@@ -17,6 +17,7 @@ import { useIdleAnimation } from './hooks/useIdleAnimation';
 import { useBlendShapes } from './hooks/useBlendShapes';
 import { useExport } from './hooks/useExport';
 import { useDatabase } from './hooks/useDatabase';
+import { useDAMIntegration } from './hooks/useDAMIntegration';
 import { getFileExtension, getFileTypeFromExtension } from './constants/formats';
 import { generateDescriptiveName, generateUniqueName } from './utils/namingUtils';
 import { bvhLoader } from './core/three/loaders/BVHLoader';
@@ -55,6 +56,8 @@ function App() {
   const { exportVRM, exportVRMA } = useExport();
   // Database
   const { isInitialized, animations, models } = useDatabase();
+  // DAM Integration
+  const { config: damConfig, loadingState: damLoadingState, clearDAMState } = useDAMIntegration();
   // UI State
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -83,7 +86,16 @@ function App() {
   
   // Thumbnail service
   const thumbnailService = getThumbnailService();
-
+  const [autoCapturedThumbnail, setAutoCapturedThumbnail] = useState<string | null>(null);
+  
+  /**
+   * Handle auto-captured thumbnail from VRMViewer
+   */
+  const handleAutoThumbnailCaptured = useCallback((thumbnail: string) => {
+    setAutoCapturedThumbnail(thumbnail);
+    console.log('Auto-captured thumbnail from viewer');
+  }, []);
+  
   /**
    * Initialize idle animations when model is loaded
    */
@@ -94,7 +106,7 @@ function App() {
       stopIdleAnimation();
     }
   }, [currentModel, currentAnimation, startIdleAnimation, stopIdleAnimation]);
-
+  
   /**
    * Handle file drop
    */
@@ -124,6 +136,7 @@ function App() {
       setUnsavedModelFile(null);
       setUnsavedModelData(null);
       setUnsavedThumbnailData(null);
+      setAutoCapturedThumbnail(null);
       
       // Load model
       const model = await loadModelFromFile(file);
@@ -138,21 +151,21 @@ function App() {
       if (extension === 'bvh') {
         const result = await bvhLoader.loadFromFile(file);
           if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
-          setPendingAnimationFile(file);
-          setPendingAnimationClip(result.data.animation);
-          setIsAnimationEditorOpen(true);
-        }
+            setPendingAnimationFile(file);
+            setPendingAnimationClip(result.data.animation);
+            setIsAnimationEditorOpen(true);
+          }
       } else if (extension === 'vrma') {
         const result = await vrmaLoader.loadFromFile(file);
           if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
-          setPendingAnimationFile(file);
-          setPendingAnimationClip(result.data.animation);
-          setIsAnimationEditorOpen(true);
-        }
+            setPendingAnimationFile(file);
+            setPendingAnimationClip(result.data.animation);
+            setIsAnimationEditorOpen(true);
+          }
       }
     }
   }, [loadModelFromFile, metadata, models]);
-
+  
   /**
    * Handle save model (manual save from unsaved state)
    */
@@ -198,9 +211,9 @@ function App() {
       setCurrentModelUuid(modelUuid);
       
       // Capture and save thumbnail if not already captured
-      if (!unsavedThumbnailData && vrmViewerRef.current) {
-        const thumbnailDataUrl = await vrmViewerRef.current!.captureThumbnail();
-        const { format, data } = parseDataUrl(thumbnailDataUrl);
+      const thumbnailToSave = unsavedThumbnailData || autoCapturedThumbnail;
+      if (thumbnailToSave && vrmViewerRef.current) {
+        const { format, data } = parseDataUrl(thumbnailToSave);
         
         const thumbnailResult = await thumbnailService.saveThumbnail({
           uuid: crypto.randomUUID(),
@@ -250,6 +263,7 @@ function App() {
       setUnsavedModelFile(null);
       setUnsavedModelData(null);
       setUnsavedThumbnailData(null);
+      setAutoCapturedThumbnail(null);
       
       console.log('Model saved:', modelName);
     } catch (error) {
@@ -257,7 +271,7 @@ function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, metadata, models]);
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models]);
   
   /**
    * Handle animation save
@@ -307,7 +321,7 @@ function App() {
     setPendingAnimationClip(null);
     setIsAnimationEditorOpen(false);
   }, [pendingAnimationClip, pendingAnimationFile, animations, loadAnimationFromFile, playAnimation, play]);
-
+  
   /**
    * Handle animation play from library
    */
@@ -325,7 +339,7 @@ function App() {
       play();
     }
   }, [animations, loadAnimationFromFile, playAnimation, play]);
-
+  
   /**
    * Handle animation delete from library
    */
@@ -337,7 +351,7 @@ function App() {
       console.error('Failed to delete animation:', result.error);
     }
   }, [animations]);
-
+  
   /**
    * Handle animation update from library
    */
@@ -354,7 +368,7 @@ function App() {
       }
     }
   }, [animations]);
-
+  
   /**
    * Handle model load from library
    */
@@ -378,7 +392,7 @@ function App() {
       await loadModelFromFile(file);
     }
   }, [models, loadModelFromFile]);
-
+  
   /**
    * Handle model delete from library
    */
@@ -387,7 +401,7 @@ function App() {
     if (result.success) {
       console.log('Model deleted:', modelId);
       
-      // Clear the current model from viewer if the deleted model is currently loaded
+      // Clear current model from viewer if deleted model is currently loaded
       if (currentModelUuid === modelId) {
         clearCurrentModel();
         setCurrentModelUuid(null);
@@ -399,7 +413,7 @@ function App() {
       return { success: false, error: result.error };
     }
   }, [models, currentModelUuid, clearCurrentModel]);
-
+  
   /**
    * Handle model update from library
    */
@@ -416,7 +430,7 @@ function App() {
       }
     }
   }, [models]);
-
+  
   /**
    * Handle export
    */
@@ -427,12 +441,12 @@ function App() {
       if (options.format === 'vrm') {
         // Export VRM
         const result = await exportVRM(currentModel.scene);
-
+ 
         if (!result.success) {
           console.error('VRM export failed:', result.error);
           return;
         }
-
+ 
         console.log('VRM export successful:', result.data);
       } else if (options.format === 'vrma' && currentAnimation) {
         // Export VRMA
@@ -448,12 +462,12 @@ function App() {
           },
           quality: options.quality,
         });
-
+ 
         if (!result.success) {
           console.error('VRMA export failed:', result.error);
           return;
         }
-
+ 
         console.log('VRMA export successful:', result.data);
       }
       
@@ -462,7 +476,7 @@ function App() {
       console.error('Export failed:', err);
     }
   }, [currentModel, currentAnimation, exportVRM, exportVRMA]);
-
+  
   /**
    * Handle thumbnail capture (manual re-capture)
    */
@@ -516,7 +530,7 @@ function App() {
       setIsCapturing(false);
     }
   }, [currentModelUuid, unsavedModelFile, models]);
-
+  
   /**
    * Handle play
    */
@@ -526,7 +540,7 @@ function App() {
     }
     play();
   }, [currentAnimation, playAnimation, play]);
-
+  
   /**
    * Handle pause
    */
@@ -534,7 +548,7 @@ function App() {
     pauseAnimation();
     pause();
   }, [pauseAnimation, pause]);
-
+  
   /**
    * Handle stop
    */
@@ -542,14 +556,14 @@ function App() {
     stopAnimation();
     stop();
   }, [stopAnimation, stop]);
-
+  
   /**
    * Handle remove file
    */
   const handleRemoveFile = useCallback((index: number) => {
     setDroppedFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
-
+  
   /**
    * Handle reset pose
    */
@@ -559,7 +573,7 @@ function App() {
       clearExpression();
     }
   }, [currentModel, clearExpression]);
-
+  
   /**
    * Handle reset camera
    */
@@ -568,7 +582,7 @@ function App() {
       cameraManager.resetCamera();
     }
   }, []);
-
+  
   /**
    * Handle visibility toggle
    */
@@ -578,7 +592,7 @@ function App() {
       setIsModelVisible(vrmViewerRef.current.isVisible());
     }
   }, []);
-
+  
   /**
    * Handle wireframe toggle
    */
@@ -588,10 +602,10 @@ function App() {
       setIsModelWireframe(vrmViewerRef.current.isWireframe());
     }
   }, []);
-
+  
   const hasModel = !!currentModel;
   const hasAnimation = !!currentAnimation;
-
+  
   return (
     <MainLayout
       onAnimationPlay={handleAnimationPlay}
@@ -605,7 +619,10 @@ function App() {
       <div className="relative flex flex-col h-full">
         {/* Viewer */}
         <div className="flex-1 relative">
-          <VRMViewer ref={vrmViewerRef} />
+          <VRMViewer
+            ref={vrmViewerRef}
+            onThumbnailCaptured={handleAutoThumbnailCaptured}
+          />
           
           {hasModel && (
             <>
@@ -677,7 +694,7 @@ function App() {
             </>
           )}
         </div>
-
+        
         {/* Drop Zone Overlay (when no model is loaded) */}
         {!hasModel && (
           <div className="absolute inset-0 flex items-center justify-center p-8">
@@ -706,39 +723,58 @@ function App() {
             </div>
           </div>
         )}
-
+        
         {/* Loading indicator */}
-        {isLoading && (
+        {(isLoading || damLoadingState.isLoading) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
             <div className="text-center">
               <svg className="w-16 h-16 text-blue-500 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357 2m15.357 2H15" />
               </svg>
-              <p className="text-gray-300 text-sm">Loading model...</p>
+              <p className="text-gray-300 text-sm">
+                {damConfig.model ? 'Loading from DAM...' : 'Loading model...'}
+              </p>
+              {damConfig.model && (
+                <p className="text-gray-400 text-xs mt-2 truncate max-w-xs mx-auto">
+                  {damConfig.model}
+                </p>
+              )}
             </div>
           </div>
         )}
-
+        
         {/* Error indicator */}
-        {error && (
+        {(error || damLoadingState.error) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
             <div className="text-center">
               <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-red-400 text-sm mb-2">Error loading model</p>
-              <p className="text-gray-400 text-xs">{error}</p>
+              <p className="text-gray-400 text-xs">{error || damLoadingState.error}</p>
               <button
-                onClick={() => clearCurrentModel()}
+                onClick={() => {
+                  clearCurrentModel();
+                  clearDAMState();
+                }}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
               >
                 Clear Error
               </button>
+              {damConfig.model && (
+                <div className="mt-4 p-3 bg-gray-800 rounded-lg max-w-md mx-auto">
+                  <p className="text-gray-300 text-xs mb-2">DAM Configuration:</p>
+                  <p className="text-blue-400 text-xs break-all">Model: {damConfig.model}</p>
+                  {damConfig.animation && <p className="text-blue-400 text-xs break-all">Animation: {damConfig.animation}</p>}
+                  {damConfig.autoplay && <p className="text-green-400 text-xs">Autoplay: enabled</p>}
+                  {damConfig.camera && <p className="text-purple-400 text-xs">Camera: {damConfig.camera}</p>}
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
-
+      
       {/* Export Dialog */}
       <ExportDialog
         isOpen={isExportDialogOpen}
@@ -747,7 +783,7 @@ function App() {
         defaultName={metadata?.name || 'model_export'}
         isExporting={false}
       />
-
+      
       {/* Animation Editor Dialog */}
       <AnimationEditor
         isOpen={isAnimationEditorOpen}
@@ -764,4 +800,3 @@ function App() {
 }
 
 export default App;
-
