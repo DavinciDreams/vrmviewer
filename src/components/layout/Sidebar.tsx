@@ -8,7 +8,7 @@ export interface SidebarProps {
   onAnimationDelete?: (id: string) => void;
   onAnimationUpdate?: (id: string, name: string, description: string) => void;
   onModelLoad?: (id: string) => void;
-  onModelDelete?: (id: string) => void;
+  onModelDelete?: (id: string) => Promise<{ success: boolean; error?: { type: string; message: string; } | undefined }>;
   onModelUpdate?: (id: string, name: string, description: string) => void;
   onExport?: () => void;
 }
@@ -76,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {activeTab === 'models' && (
           <ModelLibrary
             onLoad={onModelLoad || (() => {})}
-            onDelete={onModelDelete || (() => {})}
+            onDelete={onModelDelete || (async () => ({ success: true }))}
             onUpdate={onModelUpdate || (() => {})}
           />
         )}

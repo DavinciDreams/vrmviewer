@@ -15,7 +15,7 @@ export interface ModelData {
 
 export interface ModelLibraryProps {
   onLoad: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<{ success: boolean; error?: { type: string; message: string; } | undefined }>;
   onUpdate: (id: string, name: string, description: string) => void;
 }
 
@@ -31,57 +31,58 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
   // Thumbnail service
   const thumbnailService = getThumbnailService();
 
   // Fetch models from database
-  useEffect(() => {
-    const fetchModels = async () => {
-      if (!isInitialized) return;
-      
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await models.getAll();
-        
-        // Handle DatabaseOperationResult type - check if result has data property
-        const records = 'data' in result && result.data ? result.data : null;
-        
-        if (records) {
-          // Transform ModelRecord to ModelData
-          const transformedData: ModelData[] = records.map((record) => ({
-            id: record.uuid,
-            name: record.name,
-            description: record.description,
-            thumbnail: thumbnails[record.uuid] || record.thumbnail,
-            createdAt: record.createdAt.toISOString(),
-          }));
-          setModelList(transformedData);
-          
-          // Fetch thumbnails for each model
-          for (const record of records) {
-            const thumbnailResult = await thumbnailService.getThumbnailByTarget(record.uuid);
-            if (thumbnailResult.success && thumbnailResult.data) {
-              // Convert base64 data to data URL format
-              const dataUrl = `data:image/${thumbnailResult.data.format};base64,${thumbnailResult.data.data}`;
-              setThumbnails(prev => ({
-                ...prev,
-                [record.uuid]: dataUrl,
-              }));
-            }
-          }
-        } else {
-          setError('Failed to load models');
-        }
-      } catch (err) {
-        setError('Failed to load models');
-        console.error('Error fetching models:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchModels = async () => {
+    if (!isInitialized) return;
     
+    try {
+      setIsLoading(true);
+      setError(null);
+      const result = await models.getAll();
+      
+      // Handle DatabaseOperationResult type - check if result has data property
+      const records = 'data' in result && result.data ? result.data : null;
+      
+      if (records) {
+        // Transform ModelRecord to ModelData
+        const transformedData: ModelData[] = records.map((record) => ({
+          id: record.uuid,
+          name: record.name,
+          description: record.description,
+          thumbnail: thumbnails[record.uuid] || record.thumbnail,
+          createdAt: record.createdAt.toISOString(),
+        }));
+        setModelList(transformedData);
+        
+        // Fetch thumbnails for each model
+        for (const record of records) {
+          const thumbnailResult = await thumbnailService.getThumbnailByTarget(record.uuid);
+          if (thumbnailResult.success && thumbnailResult.data) {
+            // Convert base64 data to data URL format
+            const dataUrl = `data:image/${thumbnailResult.data.format};base64,${thumbnailResult.data.data}`;
+            setThumbnails(prev => ({
+              ...prev,
+              [record.uuid]: dataUrl,
+            }));
+          }
+        }
+      } else {
+        setError('Failed to load models');
+      }
+    } catch (err) {
+      setError('Failed to load models');
+      console.error('Error fetching models:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchModels();
   }, [isInitialized, models]);
   
@@ -112,8 +113,56 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     setEditingModel(undefined);
   };
 
+  const handleDelete = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    const result = await onDelete(id);
+    if (result.success) {
+      // Refresh model list after successful deletion
+      await fetchModels();
+      // Show success message
+      setDeleteMessage({ type: 'success', text: 'Model deleted successfully' });
+      // Clear message after 3 seconds
+      setTimeout(() => setDeleteMessage(null), 3000);
+      return { success: true };
+    } else {
+      // Show error message
+      const errorMessage = typeof result.error === 'string'
+        ? result.error
+        : result.error?.message || 'Failed to delete model';
+      setDeleteMessage({ type: 'error', text: errorMessage });
+      // Clear message after 5 seconds
+      setTimeout(() => setDeleteMessage(null), 5000);
+      return { success: false, error: errorMessage };
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
+      {/* Delete notification */}
+      {deleteMessage && (
+        <div className={`px-4 py-3 border-b ${
+          deleteMessage.type === 'success' 
+            ? 'bg-green-900/50 border-green-700' 
+            : 'bg-red-900/50 border-red-700'
+        }`}>
+          <div className="flex items-center">
+            {deleteMessage.type === 'success' ? (
+              <svg className="w-5 h-5 text-green-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <p className={`text-sm ${
+              deleteMessage.type === 'success' ? 'text-green-300' : 'text-red-300'
+            }`}>
+              {deleteMessage.text}
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* Search Bar */}
       <div className="p-4 border-b border-gray-700">
         <Input
@@ -161,7 +210,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                 key={model.id}
                 model={model}
                 onLoad={onLoad}
-                onDelete={onDelete}
+                onDelete={handleDelete}
                 onEdit={handleEdit}
               />
             ))}

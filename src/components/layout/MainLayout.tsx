@@ -8,7 +8,7 @@ export interface MainLayoutProps {
   onAnimationDelete?: (id: string) => Promise<void>;
   onAnimationUpdate?: (id: string, name: string, description: string) => Promise<void>;
   onModelLoad?: (id: string) => Promise<void>;
-  onModelDelete?: (id: string) => Promise<void>;
+  onModelDelete?: (id: string) => Promise<{ success: boolean; error?: { type: string; message: string; } | undefined }>;
   onModelUpdate?: (id: string, name: string, description: string) => Promise<void>;
   onExport?: () => void;
 }

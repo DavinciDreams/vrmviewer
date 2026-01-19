@@ -386,10 +386,19 @@ function App() {
     const result = await models.delete(modelId);
     if (result.success) {
       console.log('Model deleted:', modelId);
+      
+      // Clear the current model from viewer if the deleted model is currently loaded
+      if (currentModelUuid === modelId) {
+        clearCurrentModel();
+        setCurrentModelUuid(null);
+      }
+      
+      return { success: true };
     } else {
       console.error('Failed to delete model:', result.error);
+      return { success: false, error: result.error };
     }
-  }, [models]);
+  }, [models, currentModelUuid, clearCurrentModel]);
 
   /**
    * Handle model update from library

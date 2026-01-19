@@ -73,23 +73,27 @@ export function useVRM() {
         return;
       }
 
-      const result = await loaderManager.loadFromFile(file);
+      // Check if this is a VRM file
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      const isVRM = extension === 'vrm';
 
-      if (result.success && result.data) {
-        // For VRM files, use vrmLoader directly to get full VRM structure
-        if (result.data.metadata?.format === 'vrm') {
-          const vrmResult = await vrmLoader.loadFromFile(file);
-          if (vrmResult.success && vrmResult.data) {
-            setModel(vrmResult.data);
-            setMetadata({
-              name: vrmResult.data.metadata.title,
-              version: vrmResult.data.metadata.version,
-              author: vrmResult.data.metadata.author,
-            });
-          } else {
-            setError(vrmResult.error?.message || 'Failed to load VRM model');
-          }
+      if (isVRM) {
+        // For VRM files, use vrmLoader directly to get full VRM structure in one call
+        const vrmResult = await vrmLoader.loadFromFile(file);
+        if (vrmResult.success && vrmResult.data) {
+          setModel(vrmResult.data);
+          setMetadata({
+            name: vrmResult.data.metadata.title,
+            version: vrmResult.data.metadata.version,
+            author: vrmResult.data.metadata.author,
+          });
         } else {
+          setError(vrmResult.error?.message || 'Failed to load VRM model');
+        }
+      } else {
+        // For other formats, use loaderManager
+        const result = await loaderManager.loadFromFile(file);
+        if (result.success && result.data) {
           // For other formats, create a VRM-like structure
           const vrmLikeModel: VRMModel = {
             vrm: undefined as never,
@@ -113,9 +117,9 @@ export function useVRM() {
             version: '1.0',
             author: 'Unknown',
           });
+        } else {
+          setError(result.error?.message || 'Failed to load model');
         }
-      } else {
-        setError(result.error?.message || 'Failed to load model');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
@@ -141,25 +145,32 @@ export function useVRM() {
         return null;
       }
 
-      const result = await loaderManager.loadFromFile(file);
+      // Check if this is a VRM file
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      const isVRM = extension === 'vrm';
 
-      if (result.success && result.data) {
-        // For VRM files, use vrmLoader directly to get full VRM structure
-        if (result.data.metadata?.format === 'vrm') {
-          const vrmResult = await vrmLoader.loadFromFile(file);
-          if (vrmResult.success && vrmResult.data) {
-            setModel(vrmResult.data);
-            setMetadata({
-              name: vrmResult.data.metadata.title,
-              version: vrmResult.data.metadata.version,
-              author: vrmResult.data.metadata.author,
-            });
-            return vrmResult.data;
-          } else {
-            setError(vrmResult.error?.message || 'Failed to load VRM model');
-            return null;
-          }
+      let vrmModel: VRMModel | null = null;
+
+      if (isVRM) {
+        // For VRM files, use vrmLoader directly to get full VRM structure in one call
+        const vrmResult = await vrmLoader.loadFromFile(file);
+        if (vrmResult.success && vrmResult.data) {
+          vrmModel = vrmResult.data;
+          setModel(vrmModel);
+          setMetadata({
+            name: vrmModel.metadata.title,
+            version: vrmModel.metadata.version,
+            author: vrmModel.metadata.author,
+          });
+          return vrmModel;
         } else {
+          setError(vrmResult.error?.message || 'Failed to load VRM model');
+          return null;
+        }
+      } else {
+        // For other formats, use loaderManager
+        const result = await loaderManager.loadFromFile(file);
+        if (result.success && result.data) {
           // For other formats (GLB, GLTF, FBX), create a VRM-like structure
           const vrmLikeModel: VRMModel = {
             vrm: undefined as never,
@@ -185,17 +196,17 @@ export function useVRM() {
           });
           
           return vrmLikeModel;
+        } else {
+          setError(result.error?.message || 'Failed to load model');
+          return null;
         }
-      } else {
-        setError(result.error?.message || 'Failed to load model');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      return null;
     } finally {
       setLoading(false);
     }
-
-    return null;
   }, [setModel, setLoading, setError, clearError, clearStoreModel, setMetadata]);
 
   /**

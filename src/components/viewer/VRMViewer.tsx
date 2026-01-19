@@ -207,15 +207,33 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
    */
   useEffect(() => {
     if (currentModel && isInitialized && sceneRef.current) {
-      // Clear previous models
-      while (sceneRef.current!.children.length > 0) {
-        const child = sceneRef.current!.children[0];
-        if (child instanceof THREE.Light) {
-          // Keep lights
-          break;
+      // Clear previous models (keep lights)
+      const childrenToRemove: THREE.Object3D[] = [];
+      sceneRef.current!.children.forEach(child => {
+        if (!(child instanceof THREE.Light)) {
+          childrenToRemove.push(child);
         }
+      });
+
+      // Remove and dispose of all non-light children
+      childrenToRemove.forEach(child => {
         sceneRef.current!.remove(child);
-      }
+        // Dispose geometries and materials to prevent memory leaks
+        child.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            if (object.geometry) {
+              object.geometry.dispose();
+            }
+            if (object.material) {
+              if (Array.isArray(object.material)) {
+                object.material.forEach(mat => mat.dispose());
+              } else {
+                object.material.dispose();
+              }
+            }
+          }
+        });
+      });
 
       // Add VRM to scene
       sceneRef.current!.add(currentModel.scene);
