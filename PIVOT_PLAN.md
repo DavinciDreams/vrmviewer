@@ -38,7 +38,7 @@ Transition the VRM Viewer from a VRM-centric application to a universal 3D model
 - Migration guide for existing users
 
 ### Phase 2: Core Infrastructure (Tasks 13-17)
-**Duration**: 3-4 weeks
+**Duration**: 5-6 weeks (increased due to retargeting complexity)
 
 #### 2.1 Model Loading System
 - Implement GLTF/GLB as default loaders
@@ -47,12 +47,21 @@ Transition the VRM Viewer from a VRM-centric application to a universal 3D model
 - Universal drag-and-drop for all formats
 - Multi-file handling (GLTF + bin + textures)
 
-#### 2.2 Animation System
+#### 2.2 Animation & Retargeting System
 - Generic skeleton system (any bone structure)
 - Auto-detect skeleton type (humanoid, quadruped, custom)
-- Load and playback animations from all formats (BVH, VRMA, FBX, GLTF animations)
+- **UNIVERSAL ANIMATION RETARGETING** (Core Feature):
+  - Convert animations between ANY skeleton types
+  - Humanoid ↔ Quadruped ↔ Biped ↔ Custom
+  - Auto-bone mapping with heuristics
+  - Manual mapping editor with visual feedback
+  - Preserve motion quality and personality
+  - IK solver for foot placement (optional)
+  - Save mapping presets for reuse
+  - **Critical for non-humanoid assets**
 - Morph target system (replaces blend shapes)
-- **Note**: Animation retargeting between different skeleton types is handled by a separate "mesh 2 motion" repository - this viewer focuses on loading and playing back animations
+- Support all animation formats: BVH, VRMA, FBX animations, GLTF animations
+- **Note**: External mesh2motion solutions are inadequate, so we're building robust retargeting directly into the viewer
 
 #### 2.3 Export System
 - Export to ALL supported formats:
@@ -190,10 +199,64 @@ ModelViewer (format-agnostic)
 │   ├── PMXLoader
 │   └── Other loaders...
 ├── SkeletonAnalyzer (auto-detect skeleton type)
-├── AnimationMapper (retarget animations)
+├── AnimationRetargeter (UNIVERSAL RETARGETING)
+│   ├── AutoBoneMapper (heuristic-based mapping)
+│   ├── ManualMappingEditor (visual UI)
+│   ├── ForwardKinematicsRetargeter
+│   ├── InverseKinematicsRetargeter
+│   ├── IKSolver (foot placement, etc.)
+│   └── MappingPresets (reusable mappings)
 ├── MorphTargetManager (replaces blend shapes)
 └── ExportManager (export to any format)
 ```
+
+### Animation Retargeting System
+
+**Why Build It?**
+- External solutions (mesh2motion) are inadequate
+- Critical for non-humanoid assets (animals, creatures)
+- Enables vast animation libraries for any model
+- Unique competitive advantage
+
+**Supported Retargeting:**
+```
+Humanoid animation + Dog model → Walking dog
+Horse run + Cat skeleton → Running cat
+BVH mocap + Dragon rig → Flying dragon
+Human dance + Quadruped → Creative motion
+```
+
+**Retargeting Methods:**
+1. **Forward Kinematics (FK)**:
+   - Preserve joint rotations
+   - Good for similar skeletons
+   - Fast computation
+   - May have foot sliding
+
+2. **Inverse Kinematics (IK)**:
+   - Preserve end effector positions
+   - Better for different skeletons
+   - Prevents foot sliding
+   - Computationally expensive
+
+3. **Hybrid Approach**:
+   - FK for spine/upper body
+   - IK for legs/arms (end effectors)
+   - Best of both worlds
+   - Default method
+
+**Bone Mapping Strategies:**
+1. **Name-Based**: Match standard names (Hips → mixamorigHips)
+2. **Position-Based**: Match by relative 3D positions
+3. **Semantic**: AI learns bone correspondences
+4. **Manual**: User creates visual mappings
+5. **Preset**: Pre-made mappings for common types
+
+**Quality Metrics:**
+- Motion preservation (style, personality)
+- Foot placement accuracy
+- Smoothness (no jitter)
+- Natural motion (no artifacts)
 
 ### Database Schema Changes
 
@@ -267,6 +330,12 @@ ModelRecord {
 - [ ] All formats import via drag-and-drop
 - [ ] Export to all formats works
 - [ ] Database migrated to v3
+- [ ] **Animation retargeting works between skeleton types**
+  - [ ] Humanoid → Quadruped (walk cycle)
+  - [ ] Quadruped → Humanoid
+  - [ ] Between different quadrupeds
+  - [ ] Manual mapping editor functional
+  - [ ] Auto-mapping success rate >70%
 
 **Phase 3 Complete:**
 - [ ] 10+ rigging presets available
@@ -303,14 +372,20 @@ ModelRecord {
 
 ## Timeline
 
-**Total Duration**: 9-14 weeks
+**Total Duration**: 11-16 weeks (increased due to animation retargeting complexity)
 
 **Milestones:**
 - Week 2: Design complete
-- Week 6: Core infrastructure working
-- Week 9: Enhanced features complete
-- Week 11: UI polished
-- Week 14: Testing complete, documentation ready
+- Week 8: Core infrastructure working (including retargeting)
+- Week 11: Enhanced features complete
+- Week 13: UI polished
+- Week 16: Testing complete, documentation ready
+
+**Critical Path**: Animation Retargeting System (2.5-3 weeks)
+- This is the most complex and high-value feature
+- Requires careful algorithm design and testing
+- May require R&D time for bone mapping heuristics
+- Success depends on quality of retargeting results
 
 **Dependencies:**
 - Three.js ecosystem (loaders, exporters)
