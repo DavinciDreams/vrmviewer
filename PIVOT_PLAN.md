@@ -38,7 +38,7 @@ Transition the VRM Viewer from a VRM-centric application to a universal 3D model
 - Migration guide for existing users
 
 ### Phase 2: Core Infrastructure (Tasks 13-17)
-**Duration**: 5-6 weeks (increased due to retargeting complexity)
+**Duration**: 3-4 weeks (reduced - retargeting is integration, not from-scratch build)
 
 #### 2.1 Model Loading System
 - Implement GLTF/GLB as default loaders
@@ -47,21 +47,30 @@ Transition the VRM Viewer from a VRM-centric application to a universal 3D model
 - Universal drag-and-drop for all formats
 - Multi-file handling (GLTF + bin + textures)
 
-#### 2.2 Animation & Retargeting System
+#### 2.2 Animation & Retargeting Integration
 - Generic skeleton system (any bone structure)
 - Auto-detect skeleton type (humanoid, quadruped, custom)
-- **UNIVERSAL ANIMATION RETARGETING** (Core Feature):
-  - Convert animations between ANY skeleton types
-  - Humanoid ↔ Quadruped ↔ Biped ↔ Custom
-  - Auto-bone mapping with heuristics
-  - Manual mapping editor with visual feedback
-  - Preserve motion quality and personality
-  - IK solver for foot placement (optional)
-  - Save mapping presets for reuse
+- **ANIMATION RETARGETING INTEGRATION** (via mesh2motion):
+  - **Integration with existing mesh2motion system**: https://github.com/DavinciDreams/mesh2motion-app
+  - Clean separation: Asset management (viewer) ≠ Retargeting (mesh2motion)
+  - Send animations to mesh2motion for retargeting
+  - Receive retargeted animations back
+  - Save retargeted animations to library
+  - **Not building from scratch** - use existing mesh2motion as base
   - **Critical for non-humanoid assets**
 - Morph target system (replaces blend shapes)
 - Support all animation formats: BVH, VRMA, FBX animations, GLTF animations
-- **Note**: External mesh2motion solutions are inadequate, so we're building robust retargeting directly into the viewer
+
+**Architecture**:
+```
+VRM Viewer (Asset Management)
+    ↓ (send source animation + target skeleton)
+mesh2motion (Retargeting System)
+    ↓ (return retargeted animation)
+VRM Viewer (save & play retargeted animation)
+```
+
+**Timeline**: 1-2 weeks (integration only, much faster than building from scratch)
 
 #### 2.3 Export System
 - Export to ALL supported formats:
@@ -199,39 +208,42 @@ ModelViewer (format-agnostic)
 │   ├── PMXLoader
 │   └── Other loaders...
 ├── SkeletonAnalyzer (auto-detect skeleton type)
-├── AnimationRetargeter (UNIVERSAL RETARGETING)
-│   ├── AutoBoneMapper (heuristic-based mapping)
-│   ├── ManualMappingEditor (visual UI)
-│   ├── ForwardKinematicsRetargeter
-│   ├── InverseKinematicsRetargeter
-│   ├── IKSolver (foot placement, etc.)
-│   └── MappingPresets (reusable mappings)
+├── Mesh2MotionIntegration (retargeting bridge)
+│   └── Sends assets to/receives from mesh2motion
 ├── MorphTargetManager (replaces blend shapes)
 └── ExportManager (export to any format)
 ```
 
-### Animation Retargeting System
+### Animation Retargeting Integration
 
-**Why Build It?**
-- External solutions (mesh2motion) are inadequate
-- Critical for non-humanoid assets (animals, creatures)
-- Enables vast animation libraries for any model
-- Unique competitive advantage
+**Why Integration?**
+- mesh2motion already exists and works well
+- Asset management ≠ retargeting (separate concerns)
+- Focus on core competency: asset viewing/management
+- Don't reinvent the wheel
+
+**Integration Architecture:**
+```
+VRM Viewer (Asset Management)
+    ↓ Send: source animation + target skeleton
+mesh2motion (Retargeting System)
+    ↓ Return: retargeted animation
+VRM Viewer (save & play retargeted animation)
+```
 
 **Supported Retargeting:**
 ```
-Humanoid animation + Dog model → Walking dog
-Horse run + Cat skeleton → Running cat
-BVH mocap + Dragon rig → Flying dragon
-Human dance + Quadruped → Creative motion
+Humanoid animation + Dog model → Walking dog (via mesh2motion)
+Horse run + Cat skeleton → Running cat (via mesh2motion)
+BVH mocap + Dragon rig → Flying dragon (via mesh2motion)
+Human dance + Quadruped → Creative motion (via mesh2motion)
 ```
 
-**Retargeting Methods:**
-1. **Forward Kinematics (FK)**:
-   - Preserve joint rotations
-   - Good for similar skeletons
-   - Fast computation
-   - May have foot sliding
+**Integration Benefits:**
+- Don't rebuild retargeting from scratch (saves months)
+- Leverage existing mesh2motion codebase: https://github.com/DavinciDreams/mesh2motion-app
+- Clean separation: viewer manages assets, mesh2motion handles retargeting
+- Each system focuses on what it does best
 
 2. **Inverse Kinematics (IK)**:
    - Preserve end effector positions
@@ -330,12 +342,12 @@ ModelRecord {
 - [ ] All formats import via drag-and-drop
 - [ ] Export to all formats works
 - [ ] Database migrated to v3
-- [ ] **Animation retargeting works between skeleton types**
-  - [ ] Humanoid → Quadruped (walk cycle)
-  - [ ] Quadruped → Humanoid
-  - [ ] Between different quadrupeds
-  - [ ] Manual mapping editor functional
-  - [ ] Auto-mapping success rate >70%
+- [ ] **mesh2motion integration working**
+  - [ ] Can send animation + model to mesh2motion
+  - [ ] mesh2motion retargets successfully
+  - [ ] Can receive retargeted animation back
+  - [ ] Can save retargeted animation to library
+  - [ ] Can play retargeted animation on model
 
 **Phase 3 Complete:**
 - [ ] 10+ rigging presets available
@@ -372,20 +384,22 @@ ModelRecord {
 
 ## Timeline
 
-**Total Duration**: 11-16 weeks (increased due to animation retargeting complexity)
+**Total Duration**: 8-12 weeks (reduced - retargeting is integration, not from-scratch build)
 
 **Milestones:**
 - Week 2: Design complete
-- Week 8: Core infrastructure working (including retargeting)
-- Week 11: Enhanced features complete
-- Week 13: UI polished
-- Week 16: Testing complete, documentation ready
+- Week 5: Core infrastructure working
+- Week 7: mesh2motion integration complete
+- Week 9: Enhanced features complete
+- Week 11: UI polished
+- Week 12: Testing complete, documentation ready
 
-**Critical Path**: Animation Retargeting System (2.5-3 weeks)
-- This is the most complex and high-value feature
-- Requires careful algorithm design and testing
-- May require R&D time for bone mapping heuristics
-- Success depends on quality of retargeting results
+**Critical Path**: mesh2motion Integration (1-2 weeks)
+- Research mesh2motion API and architecture
+- Design integration layer
+- Implement data passing
+- Test end-to-end workflow
+- Much faster than building retargeting from scratch
 
 **Dependencies:**
 - Three.js ecosystem (loaders, exporters)
