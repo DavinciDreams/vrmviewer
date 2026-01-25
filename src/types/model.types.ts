@@ -14,10 +14,11 @@ export type ModelFormat =
   | 'glb'      // Binary glTF (PRIMARY FORMAT)
   | 'gltf'     // JSON-based glTF (PRIMARY FORMAT)
   | 'vrm'      // VRoid Model (humanoid-specific)
+  | 'vrma'     // VRoid Animation (motion format)
   | 'fbx'      // Autodesk FBX
+  | 'bvh'      // Motion capture animation
   | 'pmx'      // MikuMikuDance PMX
   | 'obj'      // Wavefront OBJ (geometry only)
-  | 'pmx'      // MikuMikuDance format
   | 'vmd';     // MikuMikuDance animation
 
 /**
@@ -421,6 +422,24 @@ export const FORMAT_CAPABILITIES: Record<ModelFormat, FormatCapabilities> = {
     supportsTextures: true,
   },
   vmd: {
+    supportsAnimations: true,
+    supportsMorphTargets: false,
+    supportsMaterials: false,
+    supportsLighting: false,
+    supportsCameras: false,
+    supportsSkeleton: true,
+    supportsTextures: false,
+  },
+  bvh: {
+    supportsAnimations: true,
+    supportsMorphTargets: false,
+    supportsMaterials: false,
+    supportsLighting: false,
+    supportsCameras: false,
+    supportsSkeleton: true,
+    supportsTextures: false,
+  },
+  vrma: {
     supportsAnimations: true,
     supportsMorphTargets: false,
     supportsMaterials: false,
