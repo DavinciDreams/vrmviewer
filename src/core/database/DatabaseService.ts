@@ -1,9 +1,10 @@
 /**
  * Database Service
- * Provides database initialization and management
+ * Provides database initialization, migrations, and management
  */
 
-import { getDatabase, closeDatabase, deleteDatabase } from './schemas/databaseSchema';
+import { getDatabase, closeDatabase, deleteDatabase, SCHEMA_VERSIONS } from './schemas/databaseSchema';
+import { MigrationManager } from './schemas/databaseMigrations';
 import { DatabaseError, DatabaseStatistics } from '../../types/database.types';
 
 /**
@@ -43,6 +44,8 @@ export class DatabaseService {
    */
   private async _initialize(): Promise<void> {
     try {
+      console.log(`Initializing database version ${SCHEMA_VERSIONS.CURRENT}...`);
+
       // Open database
       await this.db.open();
 
@@ -55,8 +58,14 @@ export class DatabaseService {
         throw error;
       }
 
+      // Get current database version
+      const currentVersion = this.db.verno;
+      console.log(`Current database version: ${currentVersion}, target version: ${SCHEMA_VERSIONS.CURRENT}`);
+
       // Run migrations if needed
-      await this.runMigrations();
+      if (currentVersion < SCHEMA_VERSIONS.CURRENT) {
+        await this.runMigrations(currentVersion);
+      }
 
       // Verify database integrity
       await this.verifyIntegrity();
@@ -87,10 +96,48 @@ export class DatabaseService {
   /**
    * Run database migrations
    */
-  private async runMigrations(): Promise<void> {
-    // Dexie handles migrations automatically based on version
-    // Additional migration logic can be added here if needed
-    console.log('Database migrations completed');
+  private async runMigrations(currentVersion: number): Promise<void> {
+    console.log(`Running migrations from version ${currentVersion} to ${SCHEMA_VERSIONS.CURRENT}...`);
+
+    const migrationManager = new MigrationManager(currentVersion, SCHEMA_VERSIONS.CURRENT);
+    const pendingMigrations = migrationManager.getPendingMigrations();
+
+    if (pendingMigrations.length === 0) {
+      console.log('No pending migrations');
+      return;
+    }
+
+    console.log(`Found ${pendingMigrations.length} pending migrations:`);
+    pendingMigrations.forEach((m) => {
+      console.log(`  - Version ${m.version}: ${m.name} (${m.description})`);
+    });
+
+    try {
+      const results = await migrationManager.runMigrations(this.db);
+
+      console.log('Migrations completed:');
+      results.forEach((r) => {
+        if (r.success) {
+          console.log(`  ✓ Version ${r.version}: SUCCESS`);
+        } else {
+          console.error(`  ✗ Version ${r.version}: FAILED - ${r.error}`);
+        }
+      });
+
+      // Check if all migrations succeeded
+      const failed = results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        throw new Error(`${failed.length} migration(s) failed`);
+      }
+    } catch (error) {
+      console.error('Migration failed:', error);
+      const migrationError: DatabaseError = {
+        type: 'UNKNOWN',
+        message: 'Database migration failed',
+        details: error,
+      };
+      throw migrationError;
+    }
   }
 
   /**
@@ -100,7 +147,7 @@ export class DatabaseService {
     try {
       // Check if all tables exist
       const tableNames = this.db.tables.map((table) => table.name);
-      const expectedTables = ['animations', 'models', 'thumbnails'];
+      const expectedTables = ['animations', 'models', 'thumbnails', 'preferences'];
 
       for (const expectedTable of expectedTables) {
         if (!tableNames.includes(expectedTable)) {
@@ -299,7 +346,7 @@ export class DatabaseService {
   /**
    * Clear specific table
    */
-  async clearTable(tableName: 'animations' | 'models' | 'thumbnails'): Promise<void> {
+  async clearTable(tableName: 'animations' | 'models' | 'thumbnails' | 'preferences'): Promise<void> {
     await this.initialize();
 
     try {

@@ -1,11 +1,15 @@
 /**
  * Database Types
  * Defines types for IndexedDB database entities and operations
+ * Updated to support universal 3D model and animation formats
  */
+
+import { AssetType, SkeletonType } from '../core/database/schemas/databaseSchema';
 
 /**
  * Animation Record
  * Represents a saved animation in the database
+ * Extended to support all animation formats
  */
 export interface AnimationRecord {
   id?: number;
@@ -15,10 +19,15 @@ export interface AnimationRecord {
   description?: string;
   category?: string;
   tags: string[];
-  format: 'bvh' | 'vrma' | 'gltf' | 'fbx';
+  // Extended format support
+  format: AnimationFormat;
   duration: number;
   fps?: number;
   frameCount?: number;
+  // Skeleton metadata for retargeting
+  skeletonType?: SkeletonType;
+  sourceSkeleton?: SkeletonMetadata;
+  // Authorship
   author?: string;
   license?: string;
   thumbnail?: string;
@@ -30,8 +39,26 @@ export interface AnimationRecord {
 }
 
 /**
+ * Animation Format
+ * All supported animation formats
+ */
+export type AnimationFormat = 'vrm' | 'vrma' | 'gltf' | 'glb' | 'fbx' | 'bvh' | 'vmd' | 'pmx';
+
+/**
+ * Skeleton Metadata
+ */
+export interface SkeletonMetadata {
+  type: SkeletonType;
+  boneCount: number;
+  hasRootBone?: boolean;
+  hasHipBones?: boolean;
+  hasSpine?: boolean;
+}
+
+/**
  * Model Record
  * Represents a saved model in the database
+ * Extended to support all model formats
  */
 export interface ModelRecord {
   id?: number;
@@ -41,13 +68,20 @@ export interface ModelRecord {
   description?: string;
   category?: string;
   tags: string[];
-  format: 'vrm' | 'gltf' | 'glb' | 'fbx';
-  version: '0.0' | '1.0';
+  // Extended format support
+  format: ModelFormat;
+  version: ModelVersion;
+  // Asset categorization
+  assetType: AssetType;
+  // Skeleton metadata
+  skeletonMetadata?: SkeletonMetadata;
+  // VRM-specific metadata (optional)
+  vrm?: VRMMetadata;
+  // Authorship
   author?: string;
   license?: string;
   thumbnail?: string;
   data: ArrayBuffer;
-  metadata?: ModelMetadata;
   createdAt: Date;
   updatedAt: Date;
   size: number;
@@ -55,10 +89,20 @@ export interface ModelRecord {
 }
 
 /**
- * Model Metadata
- * Additional metadata for models
+ * Model Format
+ * All supported model formats
  */
-export interface ModelMetadata {
+export type ModelFormat = 'vrm' | 'vrma' | 'gltf' | 'glb' | 'fbx' | 'bvh' | 'vmd' | 'pmx' | 'obj';
+
+/**
+ * Model Version
+ */
+export type ModelVersion = '0.0' | '1.0' | 'unknown';
+
+/**
+ * VRM Metadata
+ */
+export interface VRMMetadata {
   title: string;
   version: string;
   author: string;
@@ -109,6 +153,8 @@ export interface DatabaseQueryOptions {
   tags?: string[];
   category?: string;
   format?: string;
+  assetType?: AssetType;
+  skeletonType?: SkeletonType;
   startDate?: Date;
   endDate?: Date;
 }
@@ -169,6 +215,8 @@ export interface DatabaseStatistics {
   newestRecord?: Date;
   formats: Record<string, number>;
   categories: Record<string, number>;
+  assetTypes?: Record<string, number>;
+  skeletonTypes?: Record<string, number>;
 }
 
 /**
