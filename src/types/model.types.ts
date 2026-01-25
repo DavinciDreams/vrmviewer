@@ -207,8 +207,8 @@ export interface Model {
   morphTargets?: Map<string, MorphTargetData[]>;
 
   // Materials and textures
-  materials?: MaterialData[];
-  textures?: TextureData[];
+  materials?: THREE.Material[] | MaterialData[];
+  textures?: THREE.Texture[] | TextureData[];
 
   // Format-specific data (preserve original structure)
   vrm?: VRMType;                   // VRM-specific data (only if format === 'vrm')
