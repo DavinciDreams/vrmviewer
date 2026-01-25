@@ -13,6 +13,9 @@ export interface CaptureThumbnailOptions {
   format?: 'png' | 'jpeg' | 'webp';
   quality?: number;
   backgroundColor?: string;
+  useFixedAngle?: boolean;
+  fixedCameraPosition?: { x: number; y: number; z: number };
+  fixedCameraTarget?: { x: number; y: number; z: number };
 }
 
 /**
@@ -32,9 +35,12 @@ export async function captureThumbnail(
 ): Promise<string> {
   const {
     size = 256,
-    format = 'png',
-    quality = 0.9,
+    format = 'webp',
+    quality = 0.85,
     backgroundColor = null,
+    useFixedAngle = false,
+    fixedCameraPosition = { x: 0, y: 1.4, z: 2.5 },
+    fixedCameraTarget = { x: 0, y: 1, z: 0 },
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -64,7 +70,7 @@ export async function captureThumbnail(
       const clonedScene = cloneScene(scene);
 
       // Set up camera for thumbnail
-      const thumbnailCamera = setupCameraForThumbnail(camera);
+      const thumbnailCamera = setupCameraForThumbnail(camera, useFixedAngle, fixedCameraPosition, fixedCameraTarget);
 
       // Render the scene
       thumbnailRenderer.render(clonedScene, thumbnailCamera);
@@ -122,7 +128,20 @@ function cloneScene(scene: THREE.Scene): THREE.Scene {
 /**
  * Set up camera for thumbnail rendering
  */
-function setupCameraForThumbnail(camera: THREE.Camera): THREE.Camera {
+function setupCameraForThumbnail(
+  camera: THREE.Camera,
+  useFixedAngle: boolean = false,
+  fixedPosition: { x: number; y: number; z: number } = { x: 0, y: 1.4, z: 2.5 },
+  fixedTarget: { x: number; y: number; z: number } = { x: 0, y: 1, z: 0 }
+): THREE.Camera {
+  if (useFixedAngle) {
+    // Use fixed camera position for consistent thumbnails
+    const thumbnailCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    thumbnailCamera.position.set(fixedPosition.x, fixedPosition.y, fixedPosition.z);
+    thumbnailCamera.lookAt(fixedTarget.x, fixedTarget.y, fixedTarget.z);
+    return thumbnailCamera;
+  }
+
   if (camera instanceof THREE.PerspectiveCamera) {
     const thumbnailCamera = camera.clone();
     thumbnailCamera.aspect = 1; // Square aspect ratio for thumbnail

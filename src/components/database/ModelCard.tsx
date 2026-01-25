@@ -8,6 +8,8 @@ export interface ModelData {
   description?: string;
   thumbnail?: string;
   createdAt: string;
+  category?: string;
+  tags?: string[];
 }
 
 export interface ModelCardProps {
@@ -86,6 +88,34 @@ export const ModelCard: React.FC<ModelCardProps> = ({
             {model.description}
           </p>
         )}
+        
+        {/* Category and Tags */}
+        {model.category && (
+          <div className="mt-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-900/50 text-blue-300">
+              {model.category}
+            </span>
+          </div>
+        )}
+        
+        {model.tags && model.tags.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {model.tags.slice(0, 3).map((tag, index) => (
+              <span
+                key={index}
+                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300"
+              >
+                {tag}
+              </span>
+            ))}
+            {model.tags.length > 3 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-400">
+                +{model.tags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+        
         <p className="text-xs text-gray-500 mt-2">{formatDate(model.createdAt)}</p>
         
         {/* Actions */}

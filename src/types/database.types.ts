@@ -26,6 +26,7 @@ export interface AnimationRecord {
   createdAt: Date;
   updatedAt: Date;
   size: number;
+  order: number;
 }
 
 /**
@@ -50,6 +51,7 @@ export interface ModelRecord {
   createdAt: Date;
   updatedAt: Date;
   size: number;
+  order: number;
 }
 
 /**

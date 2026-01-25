@@ -5,6 +5,16 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { getPreferencesService } from '../../database/services/PreferencesService';
+
+/**
+ * Camera State for persistence
+ */
+export interface CameraState {
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+  zoom: number;
+}
 
 /**
  * Camera configuration options
@@ -81,16 +91,16 @@ const DEFAULT_CONTROLS_CONFIG: Required<OrbitControlsConfig> = {
   enableRotate: true,
   rotateSpeed: 1.0,
   minPolarAngle: 0,
-  maxPolarAngle: Math.PI,
+  maxPolarAngle: Math.PI / 2,
   minAzimuthAngle: -Infinity,
   maxAzimuthAngle: Infinity,
   enableZoom: true,
   zoomSpeed: 1.0,
-  minDistance: 0.5,
-  maxDistance: 10,
+  minDistance: 1,
+  maxDistance: 500,
   enablePan: true,
   panSpeed: 1.0,
-  screenSpacePanning: true,
+  screenSpacePanning: false,
 };
 
 /**
@@ -100,6 +110,7 @@ export class CameraManager {
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
   private renderer: THREE.WebGLRenderer;
+  private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -211,7 +222,16 @@ export class CameraManager {
    * Update controls (should be called in render loop)
    */
   updateControls(): void {
+    const previousPosition = this.camera.position.clone();
+    const previousTarget = this.controls.target.clone();
+    
     this.controls.update();
+    
+    // Schedule save if camera position or target changed
+    if (!previousPosition.equals(this.camera.position) ||
+        !previousTarget.equals(this.controls.target)) {
+      this.scheduleSave();
+    }
   }
 
   /**
@@ -278,6 +298,82 @@ export class CameraManager {
   }
 
   /**
+   * Set rotate speed
+   */
+  setRotateSpeed(speed: number): void {
+    this.controls.rotateSpeed = speed;
+  }
+
+  /**
+   * Set pan speed
+   */
+  setPanSpeed(speed: number): void {
+    this.controls.panSpeed = speed;
+  }
+
+  /**
+   * Set zoom speed
+   */
+  setZoomSpeed(speed: number): void {
+    this.controls.zoomSpeed = speed;
+  }
+
+  /**
+   * Get current camera state
+   */
+  getCameraState(): CameraState {
+    return {
+      position: {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        z: this.camera.position.z,
+      },
+      target: {
+        x: this.controls.target.x,
+        y: this.controls.target.y,
+        z: this.controls.target.z,
+      },
+      zoom: this.camera.zoom,
+    };
+  }
+
+  /**
+   * Restore camera from saved state
+   */
+  restoreCameraState(state: CameraState): void {
+    this.camera.position.set(state.position.x, state.position.y, state.position.z);
+    this.controls.target.set(state.target.x, state.target.y, state.target.z);
+    this.camera.zoom = state.zoom;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+  }
+
+  /**
+   * Schedule camera state save with debouncing
+   */
+  private scheduleSave(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+    this.saveTimeout = setTimeout(() => {
+      this.saveCameraState();
+    }, 1000);
+  }
+
+  /**
+   * Save camera state to preferences
+   */
+  private async saveCameraState(): Promise<void> {
+    try {
+      const state = this.getCameraState();
+      const preferencesService = getPreferencesService();
+      await preferencesService.setPreference('camera', state);
+    } catch (error) {
+      console.error('Failed to save camera state:', error);
+    }
+  }
+
+  /**
    * Update aspect ratio
    */
   updateAspectRatio(width: number, height: number): void {
@@ -304,6 +400,9 @@ export class CameraManager {
     this.controls.dispose();
     // Camera doesn't have a dispose method in Three.js
     window.removeEventListener('resize', this.handleResize);
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
   }
 }
 

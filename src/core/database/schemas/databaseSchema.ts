@@ -7,6 +7,17 @@ import Dexie, { Table } from 'dexie';
 import { AnimationRecord, ModelRecord, ThumbnailRecord } from '../../../types/database.types';
 
 /**
+ * Preference Record
+ * User preferences stored in the database
+ */
+export interface PreferenceRecord {
+  id?: number;
+  key: string;
+  value: string; // JSON stringified value
+  updatedAt: Date;
+}
+
+/**
  * VRM Viewer Database
  * Main database class extending Dexie
  */
@@ -15,18 +26,21 @@ export class VRMViewerDatabase extends Dexie {
   animations!: Table<AnimationRecord, number>;
   models!: Table<ModelRecord, number>;
   thumbnails!: Table<ThumbnailRecord, number>;
+  preferences!: Table<PreferenceRecord, number>;
 
   constructor() {
     super('VRMViewerDB');
 
-    // Define schema version 1
-    this.version(1).stores({
+    // Define schema version 2
+    this.version(2).stores({
       // Animations table
       animations: '++id, uuid, name, displayName, description, category, format, duration, createdAt, updatedAt, size, *tags',
       // Models table
       models: '++id, uuid, name, displayName, description, category, format, version, createdAt, updatedAt, size, *tags',
       // Thumbnails table
       thumbnails: '++id, uuid, name, type, targetUuid, createdAt',
+      // Preferences table
+      preferences: '++id, key, updatedAt',
     });
   }
 }
@@ -73,11 +87,15 @@ export async function deleteDatabase(): Promise<void> {
  * Database schema versions
  */
 export const SCHEMA_VERSIONS = {
-  CURRENT: 1,
+  CURRENT: 2,
   VERSIONS: [
     {
       version: 1,
       description: 'Initial schema with animations, models, and thumbnails tables',
+    },
+    {
+      version: 2,
+      description: 'Added preferences table for user settings',
     },
   ],
 };

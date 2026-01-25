@@ -354,6 +354,26 @@ export class AnimationService {
 }
 
 /**
+ * Debounce function for auto-save
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => {
+      func(...args);
+      timeout = null;
+    }, wait);
+  };
+}
+
+/**
  * Animation service singleton
  */
 let animationServiceInstance: AnimationService | null = null;
@@ -366,4 +386,36 @@ export function getAnimationService(): AnimationService {
     animationServiceInstance = new AnimationService();
   }
   return animationServiceInstance;
+}
+
+/**
+ * Auto-save animation with debouncing
+ * @param animation - Animation to save
+ * @param thumbnail - Optional thumbnail data
+ * @param delay - Debounce delay in milliseconds (default: 1000ms)
+ */
+export function autoSaveAnimation(
+  animation: Omit<AnimationRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>,
+  thumbnail?: string,
+  delay = 1000
+): void {
+  const animationService = getAnimationService();
+  const debouncedSave = debounce(animationService.saveAnimation.bind(animationService), delay);
+  debouncedSave(animation, thumbnail);
+}
+
+/**
+ * Auto-update animation with debouncing
+ * @param uuid - Animation UUID
+ * @param updates - Updates to apply
+ * @param delay - Debounce delay in milliseconds (default: 1000ms)
+ */
+export function autoUpdateAnimation(
+  uuid: string,
+  updates: Partial<AnimationRecord>,
+  delay = 1000
+): void {
+  const animationService = getAnimationService();
+  const debouncedUpdate = debounce(animationService.updateAnimation.bind(animationService), delay);
+  debouncedUpdate(uuid, updates);
 }

@@ -59,6 +59,7 @@ export function useDatabase() {
       return svc.filterAnimations(options);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return result as any;
   };
 
@@ -69,6 +70,7 @@ export function useDatabase() {
     const svc = animationService;
     if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return await svc.loadAnimationById(id) as any;
   };
 
@@ -79,6 +81,7 @@ export function useDatabase() {
     const svc = animationService;
     if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return await svc.loadAnimation(uuid) as any;
   };
 
@@ -92,6 +95,7 @@ export function useDatabase() {
     const svc = animationService;
     if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return await svc.saveAnimation(animation, thumbnail) as any;
   };
 
@@ -363,6 +367,18 @@ export function useDatabase() {
       getRecent: getRecentAnimations,
       exists: animationExists,
       clearAll: clearAllAnimations,
+      autoSave: async (animation: Omit<AnimationRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>, thumbnail?: string) => {
+        const svc = animationService;
+        if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' } };
+        await svc.initialize();
+        return await svc.saveAnimation(animation, thumbnail);
+      },
+      autoUpdate: async (uuid: string, updates: Partial<AnimationRecord>) => {
+        const svc = animationService;
+        if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' } };
+        await svc.initialize();
+        return await svc.updateAnimation(uuid, updates);
+      },
     }), [animationService]),
     models: useMemo(() => ({
       getAll: getAllModels,
@@ -384,6 +400,18 @@ export function useDatabase() {
       getRecent: getRecentModels,
       exists: modelExists,
       clearAll: clearAllModels,
+      autoSave: async (model: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>, thumbnail?: string) => {
+        const svc = modelService;
+        if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Model service not initialized' } };
+        await svc.initialize();
+        return await svc.saveModel(model, thumbnail);
+      },
+      autoUpdate: async (uuid: string, updates: Partial<ModelRecord>) => {
+        const svc = modelService;
+        if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Model service not initialized' } };
+        await svc.initialize();
+        return await svc.updateModel(uuid, updates);
+      },
     }), [modelService]),
     statistics: useMemo(() => ({
       get: getDatabaseStatistics,
