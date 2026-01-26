@@ -379,6 +379,26 @@ export class ModelService {
 }
 
 /**
+ * Debounce function for auto-save
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => {
+      func(...args);
+      timeout = null;
+    }, wait);
+  };
+}
+
+/**
  * Model service singleton
  */
 let modelServiceInstance: ModelService | null = null;
@@ -391,4 +411,36 @@ export function getModelService(): ModelService {
     modelServiceInstance = new ModelService();
   }
   return modelServiceInstance;
+}
+
+/**
+ * Auto-save model with debouncing
+ * @param model - Model to save
+ * @param thumbnail - Optional thumbnail data
+ * @param delay - Debounce delay in milliseconds (default: 1000ms)
+ */
+export function autoSaveModel(
+  model: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>,
+  thumbnail?: string,
+  delay = 1000
+): void {
+  const modelService = getModelService();
+  const debouncedSave = debounce(modelService.saveModel.bind(modelService), delay);
+  debouncedSave(model, thumbnail);
+}
+
+/**
+ * Auto-update model with debouncing
+ * @param uuid - Model UUID
+ * @param updates - Updates to apply
+ * @param delay - Debounce delay in milliseconds (default: 1000ms)
+ */
+export function autoUpdateModel(
+  uuid: string,
+  updates: Partial<ModelRecord>,
+  delay = 1000
+): void {
+  const modelService = getModelService();
+  const debouncedUpdate = debounce(modelService.updateModel.bind(modelService), delay);
+  debouncedUpdate(uuid, updates);
 }

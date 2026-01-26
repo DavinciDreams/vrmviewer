@@ -1,11 +1,12 @@
 /**
  * Animation Library Store
- * Zustand store for managing user's animation library with persistence
+ * Zustand store for managing user's animation library with IndexedDB persistence
  */
 
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
+import { devtools } from 'zustand/middleware';
 import { AnimationRecord } from '../types/database.types';
+import { getAnimationService } from '../core/database/services/AnimationService';
 
 /**
  * Animation Library State
@@ -41,7 +42,14 @@ interface AnimationLibraryState {
  * Animation Library Actions
  */
 interface AnimationLibraryActions {
-  // Animation management
+  // Database sync methods
+  loadAnimations: () => Promise<void>;
+  saveAnimation: (animation: Omit<AnimationRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>, thumbnail?: string) => Promise<void>;
+  updateAnimationInDatabase: (uuid: string, updates: Partial<AnimationRecord>) => Promise<void>;
+  deleteAnimationFromDatabase: (uuid: string) => Promise<void>;
+  refreshAnimations: () => Promise<void>;
+
+  // State management
   setAnimations: (animations: AnimationRecord[]) => void;
   addAnimation: (animation: AnimationRecord) => void;
   updateAnimation: (uuid: string, updates: Partial<AnimationRecord>) => void;
@@ -74,142 +82,226 @@ interface AnimationLibraryActions {
  * Create animation library store
  */
 export const useAnimationLibraryStore = create<AnimationLibraryState & AnimationLibraryActions>()(
-  devtools(
-    persist(
-      (set) => ({
-        // Initial state
+  devtools((set) => ({
+    // Initial state
+    animations: [],
+    selectedAnimationId: null,
+    selectedAnimationUuid: null,
+    isLoading: false,
+    isRefreshing: false,
+    error: null,
+    filters: {
+      search: '',
+      category: null,
+      format: null,
+      tags: [],
+    },
+    viewMode: 'grid',
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+
+    // Database sync methods
+    loadAnimations: async () => {
+      set({ isLoading: true, error: null });
+      try {
+        const animationService = getAnimationService();
+        const result = await animationService.getAllAnimations();
+        
+        if (result.success && result.data) {
+          set({ animations: result.data, isLoading: false, error: null });
+        } else {
+          set({ error: result.error?.message || 'Failed to load animations', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to load animations', isLoading: false });
+        console.error('Error loading animations:', error);
+      }
+    },
+
+    saveAnimation: async (animation, thumbnail) => {
+      set({ isLoading: true, error: null });
+      try {
+        const animationService = getAnimationService();
+        const result = await animationService.saveAnimation(animation, thumbnail);
+        
+        if (result.success && result.data) {
+          set((state) => ({
+            animations: [...state.animations, result.data!],
+            isLoading: false,
+            error: null,
+          }));
+        } else {
+          set({ error: result.error?.message || 'Failed to save animation', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to save animation', isLoading: false });
+        console.error('Error saving animation:', error);
+      }
+    },
+
+    updateAnimationInDatabase: async (uuid, updates) => {
+      set({ isLoading: true, error: null });
+      try {
+        const animationService = getAnimationService();
+        const result = await animationService.updateAnimation(uuid, updates);
+        
+        if (result.success && result.data) {
+          set((state) => ({
+            animations: state.animations.map((animation) =>
+              animation.uuid === uuid ? result.data! : animation
+            ),
+            isLoading: false,
+            error: null,
+          }));
+        } else {
+          set({ error: result.error?.message || 'Failed to update animation', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to update animation', isLoading: false });
+        console.error('Error updating animation:', error);
+      }
+    },
+
+    deleteAnimationFromDatabase: async (uuid) => {
+      set({ isLoading: true, error: null });
+      try {
+        const animationService = getAnimationService();
+        const result = await animationService.deleteAnimation(uuid);
+        
+        if (result.success) {
+          set((state) => ({
+            animations: state.animations.filter((animation) => animation.uuid !== uuid),
+            selectedAnimationId: state.selectedAnimationUuid === uuid ? null : state.selectedAnimationId,
+            selectedAnimationUuid: state.selectedAnimationUuid === uuid ? null : state.selectedAnimationUuid,
+            isLoading: false,
+            error: null,
+          }));
+        } else {
+          set({ error: result.error?.message || 'Failed to delete animation', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to delete animation', isLoading: false });
+        console.error('Error deleting animation:', error);
+      }
+    },
+
+    refreshAnimations: async () => {
+      set({ isRefreshing: true, error: null });
+      try {
+        const animationService = getAnimationService();
+        const result = await animationService.getAllAnimations();
+        
+        if (result.success && result.data) {
+          set({ animations: result.data, isRefreshing: false, error: null });
+        } else {
+          set({ error: result.error?.message || 'Failed to refresh animations', isRefreshing: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to refresh animations', isRefreshing: false });
+        console.error('Error refreshing animations:', error);
+      }
+    },
+
+    // State management
+    setAnimations: (animations: AnimationRecord[]) =>
+      set({
+        animations,
+        isLoading: false,
+        error: null,
+      }),
+
+    addAnimation: (animation: AnimationRecord) =>
+      set((state) => ({
+        animations: [...state.animations, animation],
+      })),
+
+    updateAnimation: (uuid: string, updates: Partial<AnimationRecord>) =>
+      set((state) => ({
+        animations: state.animations.map((animation: AnimationRecord) =>
+          animation.uuid === uuid ? { ...animation, ...updates } : animation
+        ),
+      })),
+
+    removeAnimation: (uuid: string) =>
+      set((state) => ({
+        animations: state.animations.filter((animation: AnimationRecord) => animation.uuid !== uuid),
+        selectedAnimationId:
+          state.selectedAnimationUuid === uuid ? null : state.selectedAnimationId,
+        selectedAnimationUuid:
+          state.selectedAnimationUuid === uuid ? null : state.selectedAnimationUuid,
+      })),
+
+    clearAnimations: () =>
+      set({
         animations: [],
         selectedAnimationId: null,
         selectedAnimationUuid: null,
+      }),
+
+    selectAnimation: (id: string | null, uuid: string | null) =>
+      set({
+        selectedAnimationId: id,
+        selectedAnimationUuid: uuid,
+      }),
+
+    clearSelection: () =>
+      set({
+        selectedAnimationId: null,
+        selectedAnimationUuid: null,
+      }),
+
+    setLoading: (loading: boolean) =>
+      set({
+        isLoading: loading,
+      }),
+
+    setRefreshing: (refreshing: boolean) =>
+      set({
+        isRefreshing: refreshing,
+      }),
+
+    setError: (error: string | null) =>
+      set({
+        error,
         isLoading: false,
         isRefreshing: false,
+      }),
+
+    clearError: () =>
+      set({
         error: null,
+      }),
+
+    setFilters: (filters: Partial<AnimationLibraryState['filters']>) =>
+      set((state) => ({
+        filters: { ...state.filters, ...filters },
+      })),
+
+    resetFilters: () =>
+      set({
         filters: {
           search: '',
           category: null,
           format: null,
           tags: [],
         },
-        viewMode: 'grid',
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-
-        // Actions
-        setAnimations: (animations: AnimationRecord[]) =>
-          set({
-            animations,
-            isLoading: false,
-            error: null,
-          }),
-
-        addAnimation: (animation: AnimationRecord) =>
-          set((state) => ({
-            animations: [...state.animations, animation],
-          })),
-
-        updateAnimation: (uuid: string, updates: Partial<AnimationRecord>) =>
-          set((state) => ({
-            animations: state.animations.map((animation: AnimationRecord) =>
-              animation.uuid === uuid ? { ...animation, ...updates } : animation
-            ),
-          })),
-
-        removeAnimation: (uuid: string) =>
-          set((state) => ({
-            animations: state.animations.filter((animation: AnimationRecord) => animation.uuid !== uuid),
-            selectedAnimationId:
-              state.selectedAnimationUuid === uuid ? null : state.selectedAnimationId,
-            selectedAnimationUuid:
-              state.selectedAnimationUuid === uuid ? null : state.selectedAnimationUuid,
-          })),
-
-        clearAnimations: () =>
-          set({
-            animations: [],
-            selectedAnimationId: null,
-            selectedAnimationUuid: null,
-          }),
-
-        selectAnimation: (id: string | null, uuid: string | null) =>
-          set({
-            selectedAnimationId: id,
-            selectedAnimationUuid: uuid,
-          }),
-
-        clearSelection: () =>
-          set({
-            selectedAnimationId: null,
-            selectedAnimationUuid: null,
-          }),
-
-        setLoading: (loading: boolean) =>
-          set({
-            isLoading: loading,
-          }),
-
-        setRefreshing: (refreshing: boolean) =>
-          set({
-            isRefreshing: refreshing,
-          }),
-
-        setError: (error: string | null) =>
-          set({
-            error,
-            isLoading: false,
-            isRefreshing: false,
-          }),
-
-        clearError: () =>
-          set({
-            error: null,
-          }),
-
-        setFilters: (filters: Partial<AnimationLibraryState['filters']>) =>
-          set((state) => ({
-            filters: { ...state.filters, ...filters },
-          })),
-
-        resetFilters: () =>
-          set({
-            filters: {
-              search: '',
-              category: null,
-              format: null,
-              tags: [],
-            },
-          }),
-
-        setViewMode: (mode: 'grid' | 'list') =>
-          set({
-            viewMode: mode,
-          }),
-
-        setSortBy: (sortBy: 'name' | 'createdAt' | 'updatedAt' | 'duration' | 'size') =>
-          set({
-            sortBy,
-          }),
-
-        setSortOrder: (order: 'asc' | 'desc') =>
-          set({
-            sortOrder: order,
-          }),
       }),
-      {
-        name: 'animation-library-storage',
-        // Persist animations, filters, and view settings
-        partialize: (state) => ({
-          animations: state.animations,
-          filters: state.filters,
-          viewMode: state.viewMode,
-          sortBy: state.sortBy,
-          sortOrder: state.sortOrder,
-        }),
-      }
-    ),
-    {
-      name: 'animation-library',
-    }
-  )
+
+    setViewMode: (mode: 'grid' | 'list') =>
+      set({
+        viewMode: mode,
+      }),
+
+    setSortBy: (sortBy: 'name' | 'createdAt' | 'updatedAt' | 'duration' | 'size') =>
+      set({
+        sortBy,
+      }),
+
+    setSortOrder: (order: 'asc' | 'desc') =>
+      set({
+        sortOrder: order,
+      }),
+  }))
 );
 
 /**

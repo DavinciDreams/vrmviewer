@@ -19,6 +19,7 @@ export interface ThumbnailCaptureConfig {
   quality?: number;
   backgroundColor?: string;
   delay?: number; // Delay in milliseconds before capturing (default: 100ms)
+  useFixedAngle?: boolean; // Use fixed camera angle for consistent thumbnails
 }
 
 /**
@@ -40,10 +41,11 @@ export function useThumbnailCapture(config: ThumbnailCaptureConfig = {}) {
   const {
     enabled = true,
     size = 256,
-    format = 'png',
-    quality = 0.9,
+    format = 'webp',
+    quality = 0.85,
     backgroundColor = '#1a1a2e',
     delay = 100,
+    useFixedAngle = false,
   } = config;
 
   const thumbnailService = getThumbnailService();

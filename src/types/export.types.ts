@@ -8,7 +8,7 @@ import { VRMMetadata } from './vrm.types';
 /**
  * Export Format
  */
-export type ExportFormat = 'vrm' | 'vrma' | 'gltf' | 'glb';
+export type ExportFormat = 'vrm' | 'vrma' | 'gltf' | 'glb' | 'fbx' | 'bvh';
 
 /**
  * Export Quality
@@ -30,6 +30,7 @@ export interface ExportOptions {
   compression: ExportCompression;
   includeAnimations?: boolean;
   includeBlendShapes?: boolean;
+  includeMorphTargets?: boolean;
   includeMaterials?: boolean;
   includeTextures?: boolean;
   includeThumbnail?: boolean;
@@ -38,6 +39,19 @@ export interface ExportOptions {
   binary?: boolean;
   pretty?: boolean;
   customExtensions?: boolean;
+  optimizeMesh?: boolean;
+  mergeMeshes?: boolean;
+  removeUnusedBones?: boolean;
+  compressTextures?: boolean;
+  textureQuality?: number;
+  animationSampleRate?: number;
+  onProgress?: (progress: ExportProgress) => void;
+  metadata?: {
+    title?: string;
+    version?: string;
+    author?: string;
+    description?: string;
+  };
 }
 
 /**
@@ -117,8 +131,10 @@ export interface ExportProgress {
 export type ExportStage =
   | 'INITIALIZING'
   | 'PREPARING'
+  | 'ANALYZING'
   | 'PROCESSING'
   | 'COMPRESSING'
+  | 'EXPORTING'
   | 'GENERATING_THUMBNAIL'
   | 'FINALIZING'
   | 'COMPLETE'
@@ -169,6 +185,7 @@ export type ExportErrorType =
   | 'NO_MODEL_LOADED'
   | 'NO_ANIMATION_LOADED'
   | 'INVALID_FORMAT'
+  | 'UNSUPPORTED_FORMAT'
   | 'EXPORT_FAILED'
   | 'COMPRESSION_FAILED'
   | 'THUMBNAIL_FAILED'

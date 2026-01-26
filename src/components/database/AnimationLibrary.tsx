@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import Fuse from 'fuse.js';
 import { AnimationCard } from './AnimationCard';
 import { Input } from '../ui/Input';
 import { AnimationEditor } from './AnimationEditor';
 import { useDatabase } from '../../hooks/useDatabase';
+import { getThumbnailService } from '../../core/database/services/ThumbnailService';
 
 export interface AnimationData {
   id: string;
@@ -11,12 +13,14 @@ export interface AnimationData {
   thumbnail?: string;
   duration?: number;
   createdAt: string;
+  category?: string;
+  tags?: string[];
 }
 
 export interface AnimationLibraryProps {
   onPlay: (id: string) => void;
-  onDelete: (id: string) => void;
-  onUpdate: (id: string, name: string, description: string) => void;
+  onDelete: (id: string) => Promise<{ success: boolean; error?: string }>;
+  onUpdate: (id: string, name: string, description: string, category?: string, tags?: string[]) => void;
 }
 
 export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
@@ -28,51 +32,92 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [editingAnimation, setEditingAnimation] = useState<AnimationData | undefined>();
   const [animationList, setAnimationList] = useState<AnimationData[]>([]);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Thumbnail service
+  const thumbnailService = getThumbnailService();
 
   // Fetch animations from database
-  useEffect(() => {
-    const fetchAnimations = async () => {
-      if (!isInitialized) return;
+  const fetchAnimations = async () => {
+    if (!isInitialized) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      const result = await animations.getAll();
       
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await animations.getAll();
+      // Handle DatabaseOperationResult type - check if result has data property
+      const records = 'data' in result && result.data ? result.data : null;
+      
+      if (records) {
+        // Transform AnimationRecord to AnimationData
+        const transformedData: AnimationData[] = records.map((record) => ({
+          id: record.uuid,
+          name: record.name,
+          description: record.description,
+          thumbnail: thumbnails[record.uuid] || record.thumbnail,
+          duration: record.duration,
+          createdAt: record.createdAt.toISOString(),
+          category: record.category,
+          tags: record.tags,
+        }));
+        setAnimationList(transformedData);
         
-        // Extract data from result - handle both DatabaseOperationResult and DatabaseQueryResult types
-        const records = result.success && result.data ? result.data : null;
-        
-        if (records) {
-          // Transform AnimationRecord to AnimationData
-          const transformedData: AnimationData[] = records.map((record: any) => ({
-            id: record.uuid,
-            name: record.name,
-            description: record.description,
-            thumbnail: record.thumbnail,
-            duration: record.duration,
-            createdAt: record.createdAt.toISOString(),
-          }));
-          setAnimationList(transformedData);
-        } else {
-          setError('Failed to load animations');
+        // Fetch thumbnails for each animation
+        for (const record of records) {
+          const thumbnailResult = await thumbnailService.getThumbnailByTarget(record.uuid);
+          if (thumbnailResult.success && thumbnailResult.data) {
+            // Convert base64 data to data URL format
+            const dataUrl = `data:image/${thumbnailResult.data.format};base64,${thumbnailResult.data.data}`;
+            setThumbnails(prev => ({
+              ...prev,
+              [record.uuid]: dataUrl,
+            }));
+          }
         }
-      } catch (err) {
+      } else {
         setError('Failed to load animations');
-        console.error('Error fetching animations:', err);
-      } finally {
-        setIsLoading(false);
       }
-    };
-
+    } catch (err) {
+      setError('Failed to load animations');
+      console.error('Error fetching animations:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchAnimations();
   }, [isInitialized, animations]);
   
-  const filteredAnimations = animationList.filter((animation) =>
-    animation.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    animation.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Update animationList when thumbnails change
+  useEffect(() => {
+    if (animationList.length > 0) {
+      setAnimationList(prev => prev.map(animation => ({
+        ...animation,
+        thumbnail: thumbnails[animation.id] || animation.thumbnail,
+      })));
+    }
+  }, [thumbnails]);
+  
+  // Fuse.js instance for fuzzy search
+  const fuse = useMemo(() => {
+    return new Fuse(animationList, {
+      keys: ['name', 'description', 'tags'],
+      threshold: 0.3,
+      includeScore: true,
+    });
+  }, [animationList]);
+  
+  const filteredAnimations = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return animationList;
+    }
+    const results = fuse.search(searchQuery);
+    return results.map(result => result.item);
+  }, [searchQuery, fuse]);
 
   const handleEdit = (id: string) => {
     const animation = animationList.find((a) => a.id === id);
@@ -81,8 +126,8 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
     }
   };
 
-  const handleSave = (id: string, name: string, description: string) => {
-    onUpdate(id, name, description);
+  const handleSave = (id: string, name: string, description: string, category?: string, tags?: string[]) => {
+    onUpdate(id, name, description, category, tags);
     setEditingAnimation(undefined);
   };
 

@@ -1,11 +1,12 @@
 /**
  * Model Library Store
- * Zustand store for managing user's model library with persistence
+ * Zustand store for managing user's model library with IndexedDB persistence
  */
 
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
+import { devtools } from 'zustand/middleware';
 import { ModelRecord } from '../types/database.types';
+import { getModelService } from '../core/database/services/ModelService';
 
 /**
  * Model Library State
@@ -41,7 +42,14 @@ interface ModelLibraryState {
  * Model Library Actions
  */
 interface ModelLibraryActions {
-  // Model management
+  // Database sync methods
+  loadModels: () => Promise<void>;
+  saveModel: (model: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>, thumbnail?: string) => Promise<void>;
+  updateModelInDatabase: (uuid: string, updates: Partial<ModelRecord>) => Promise<void>;
+  deleteModelFromDatabase: (uuid: string) => Promise<void>;
+  refreshModels: () => Promise<void>;
+
+  // State management
   setModels: (models: ModelRecord[]) => void;
   addModel: (model: ModelRecord) => void;
   updateModel: (uuid: string, updates: Partial<ModelRecord>) => void;
@@ -74,142 +82,226 @@ interface ModelLibraryActions {
  * Create model library store
  */
 export const useModelLibraryStore = create<ModelLibraryState & ModelLibraryActions>()(
-  devtools(
-    persist(
-      (set) => ({
-        // Initial state
+  devtools((set) => ({
+    // Initial state
+    models: [],
+    selectedModelId: null,
+    selectedModelUuid: null,
+    isLoading: false,
+    isRefreshing: false,
+    error: null,
+    filters: {
+      search: '',
+      category: null,
+      format: null,
+      tags: [],
+    },
+    viewMode: 'grid',
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+
+    // Database sync methods
+    loadModels: async () => {
+      set({ isLoading: true, error: null });
+      try {
+        const modelService = getModelService();
+        const result = await modelService.getAllModels();
+        
+        if (result.success && result.data) {
+          set({ models: result.data, isLoading: false, error: null });
+        } else {
+          set({ error: result.error?.message || 'Failed to load models', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to load models', isLoading: false });
+        console.error('Error loading models:', error);
+      }
+    },
+
+    saveModel: async (model, thumbnail) => {
+      set({ isLoading: true, error: null });
+      try {
+        const modelService = getModelService();
+        const result = await modelService.saveModel(model, thumbnail);
+        
+        if (result.success && result.data) {
+          set((state) => ({
+            models: [...state.models, result.data!],
+            isLoading: false,
+            error: null,
+          }));
+        } else {
+          set({ error: result.error?.message || 'Failed to save model', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to save model', isLoading: false });
+        console.error('Error saving model:', error);
+      }
+    },
+
+    updateModelInDatabase: async (uuid, updates) => {
+      set({ isLoading: true, error: null });
+      try {
+        const modelService = getModelService();
+        const result = await modelService.updateModel(uuid, updates);
+        
+        if (result.success && result.data) {
+          set((state) => ({
+            models: state.models.map((model) =>
+              model.uuid === uuid ? result.data! : model
+            ),
+            isLoading: false,
+            error: null,
+          }));
+        } else {
+          set({ error: result.error?.message || 'Failed to update model', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to update model', isLoading: false });
+        console.error('Error updating model:', error);
+      }
+    },
+
+    deleteModelFromDatabase: async (uuid) => {
+      set({ isLoading: true, error: null });
+      try {
+        const modelService = getModelService();
+        const result = await modelService.deleteModel(uuid);
+        
+        if (result.success) {
+          set((state) => ({
+            models: state.models.filter((model) => model.uuid !== uuid),
+            selectedModelId: state.selectedModelUuid === uuid ? null : state.selectedModelId,
+            selectedModelUuid: state.selectedModelUuid === uuid ? null : state.selectedModelUuid,
+            isLoading: false,
+            error: null,
+          }));
+        } else {
+          set({ error: result.error?.message || 'Failed to delete model', isLoading: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to delete model', isLoading: false });
+        console.error('Error deleting model:', error);
+      }
+    },
+
+    refreshModels: async () => {
+      set({ isRefreshing: true, error: null });
+      try {
+        const modelService = getModelService();
+        const result = await modelService.getAllModels();
+        
+        if (result.success && result.data) {
+          set({ models: result.data, isRefreshing: false, error: null });
+        } else {
+          set({ error: result.error?.message || 'Failed to refresh models', isRefreshing: false });
+        }
+      } catch (error) {
+        set({ error: 'Failed to refresh models', isRefreshing: false });
+        console.error('Error refreshing models:', error);
+      }
+    },
+
+    // State management
+    setModels: (models: ModelRecord[]) =>
+      set({
+        models,
+        isLoading: false,
+        error: null,
+      }),
+
+    addModel: (model: ModelRecord) =>
+      set((state) => ({
+        models: [...state.models, model],
+      })),
+
+    updateModel: (uuid: string, updates: Partial<ModelRecord>) =>
+      set((state) => ({
+        models: state.models.map((model: ModelRecord) =>
+          model.uuid === uuid ? { ...model, ...updates } : model
+        ),
+      })),
+
+    removeModel: (uuid: string) =>
+      set((state) => ({
+        models: state.models.filter((model: ModelRecord) => model.uuid !== uuid),
+        selectedModelId:
+          state.selectedModelUuid === uuid ? null : state.selectedModelId,
+        selectedModelUuid:
+          state.selectedModelUuid === uuid ? null : state.selectedModelUuid,
+      })),
+
+    clearModels: () =>
+      set({
         models: [],
         selectedModelId: null,
         selectedModelUuid: null,
+      }),
+
+    selectModel: (id: string | null, uuid: string | null) =>
+      set({
+        selectedModelId: id,
+        selectedModelUuid: uuid,
+      }),
+
+    clearSelection: () =>
+      set({
+        selectedModelId: null,
+        selectedModelUuid: null,
+      }),
+
+    setLoading: (loading: boolean) =>
+      set({
+        isLoading: loading,
+      }),
+
+    setRefreshing: (refreshing: boolean) =>
+      set({
+        isRefreshing: refreshing,
+      }),
+
+    setError: (error: string | null) =>
+      set({
+        error,
         isLoading: false,
         isRefreshing: false,
+      }),
+
+    clearError: () =>
+      set({
         error: null,
+      }),
+
+    setFilters: (filters: Partial<ModelLibraryState['filters']>) =>
+      set((state) => ({
+        filters: { ...state.filters, ...filters },
+      })),
+
+    resetFilters: () =>
+      set({
         filters: {
           search: '',
           category: null,
           format: null,
           tags: [],
         },
-        viewMode: 'grid',
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-
-        // Actions
-        setModels: (models: ModelRecord[]) =>
-          set({
-            models,
-            isLoading: false,
-            error: null,
-          }),
-
-        addModel: (model: ModelRecord) =>
-          set((state) => ({
-            models: [...state.models, model],
-          })),
-
-        updateModel: (uuid: string, updates: Partial<ModelRecord>) =>
-          set((state) => ({
-            models: state.models.map((model: ModelRecord) =>
-              model.uuid === uuid ? { ...model, ...updates } : model
-            ),
-          })),
-
-        removeModel: (uuid: string) =>
-          set((state) => ({
-            models: state.models.filter((model: ModelRecord) => model.uuid !== uuid),
-            selectedModelId:
-              state.selectedModelUuid === uuid ? null : state.selectedModelId,
-            selectedModelUuid:
-              state.selectedModelUuid === uuid ? null : state.selectedModelUuid,
-          })),
-
-        clearModels: () =>
-          set({
-            models: [],
-            selectedModelId: null,
-            selectedModelUuid: null,
-          }),
-
-        selectModel: (id: string | null, uuid: string | null) =>
-          set({
-            selectedModelId: id,
-            selectedModelUuid: uuid,
-          }),
-
-        clearSelection: () =>
-          set({
-            selectedModelId: null,
-            selectedModelUuid: null,
-          }),
-
-        setLoading: (loading: boolean) =>
-          set({
-            isLoading: loading,
-          }),
-
-        setRefreshing: (refreshing: boolean) =>
-          set({
-            isRefreshing: refreshing,
-          }),
-
-        setError: (error: string | null) =>
-          set({
-            error,
-            isLoading: false,
-            isRefreshing: false,
-          }),
-
-        clearError: () =>
-          set({
-            error: null,
-          }),
-
-        setFilters: (filters: Partial<ModelLibraryState['filters']>) =>
-          set((state) => ({
-            filters: { ...state.filters, ...filters },
-          })),
-
-        resetFilters: () =>
-          set({
-            filters: {
-              search: '',
-              category: null,
-              format: null,
-              tags: [],
-            },
-          }),
-
-        setViewMode: (mode: 'grid' | 'list') =>
-          set({
-            viewMode: mode,
-          }),
-
-        setSortBy: (sortBy: 'name' | 'createdAt' | 'updatedAt' | 'size') =>
-          set({
-            sortBy,
-          }),
-
-        setSortOrder: (order: 'asc' | 'desc') =>
-          set({
-            sortOrder: order,
-          }),
       }),
-      {
-        name: 'model-library-storage',
-        // Persist models, filters, and view settings
-        partialize: (state) => ({
-          models: state.models,
-          filters: state.filters,
-          viewMode: state.viewMode,
-          sortBy: state.sortBy,
-          sortOrder: state.sortOrder,
-        }),
-      }
-    ),
-    {
-      name: 'model-library',
-    }
-  )
+
+    setViewMode: (mode: 'grid' | 'list') =>
+      set({
+        viewMode: mode,
+      }),
+
+    setSortBy: (sortBy: 'name' | 'createdAt' | 'updatedAt' | 'size') =>
+      set({
+        sortBy,
+      }),
+
+    setSortOrder: (order: 'asc' | 'desc') =>
+      set({
+        sortOrder: order,
+      }),
+  }))
 );
 
 /**

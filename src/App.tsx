@@ -7,6 +7,7 @@ import { FilePreview } from './components/dragdrop/FilePreview';
 import { AnimationControls } from './components/controls/AnimationControls';
 import { PlaybackControls } from './components/controls/PlaybackControls';
 import { ModelControls } from './components/controls/ModelControls';
+import { CameraControls } from './components/controls/CameraControls';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
 import { Button } from './components/ui/Button';
@@ -23,6 +24,7 @@ import { generateDescriptiveName, generateUniqueName } from './utils/namingUtils
 import { bvhLoader } from './core/three/loaders/BVHLoader';
 import { vrmaLoader } from './core/three/loaders/VRMALoader';
 import { cameraManager } from './core/three/scene/CameraManager';
+import { getPreferencesService } from './core/database/services/PreferencesService';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
 import { parseDataUrl } from './utils/thumbnailUtils';
 import type { AnimationRecord, ModelRecord } from './types/database.types';
@@ -106,6 +108,39 @@ function App() {
       stopIdleAnimation();
     }
   }, [currentModel, currentAnimation, startIdleAnimation, stopIdleAnimation]);
+
+  /**
+   * Restore camera state on app load
+   */
+  useEffect(() => {
+    const restoreCameraState = async () => {
+      try {
+        const preferencesService = getPreferencesService();
+        const result = await preferencesService.getPreference('camera');
+        
+        if (result.success && result.data && cameraManager) {
+          const cameraState = result.data as {
+            position: { x: number; y: number; z: number };
+            target: { x: number; y: number; z: number };
+            zoom: number;
+          };
+          cameraManager.restoreCameraState(cameraState);
+          console.log('Camera state restored:', cameraState);
+        }
+      } catch (error) {
+        console.error('Failed to restore camera state:', error);
+      }
+    };
+
+    // Restore camera state after a short delay to ensure CameraManager is initialized
+    const timer = setTimeout(() => {
+      restoreCameraState();
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
   
   /**
    * Handle file drop
@@ -200,6 +235,7 @@ function App() {
         thumbnail: '',
         data: unsavedModelData,
         size: unsavedModelData.byteLength,
+        order: Date.now(),
       });
       
       if (!hasSuccessAndData<{ uuid: string }>(result)) {
@@ -304,6 +340,7 @@ function App() {
       thumbnail: '',
       data: fileData,
       size: fileData.byteLength,
+      order: Date.now(),
     });
     
     if (!result.success) {
@@ -681,6 +718,8 @@ function App() {
                     onSeek={seek}
                   />
                 )}
+                
+                <CameraControls disabled={!hasModel} />
                 
                 <ModelControls
                   isVisible={isModelVisible}

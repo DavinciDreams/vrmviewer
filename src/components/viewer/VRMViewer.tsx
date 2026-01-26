@@ -38,6 +38,7 @@ export interface VRMViewerProps {
     size?: number;
     format?: 'png' | 'jpeg' | 'webp';
     quality?: number;
+    useFixedAngle?: boolean;
   };
 }
 
@@ -69,8 +70,9 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const { capture } = useThumbnailCapture({
     enabled: autoCaptureThumbnail,
     size: thumbnailConfig?.size || 256,
-    format: thumbnailConfig?.format || 'png',
-    quality: thumbnailConfig?.quality || 0.9,
+    format: thumbnailConfig?.format || 'webp',
+    quality: thumbnailConfig?.quality || 0.85,
+    useFixedAngle: thumbnailConfig?.useFixedAngle || false,
   });
 
   // Local state

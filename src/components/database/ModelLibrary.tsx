@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import Fuse from 'fuse.js';
 import { ModelCard } from './ModelCard';
 import { Input } from '../ui/Input';
 import { AnimationEditor } from './AnimationEditor';
@@ -11,12 +12,14 @@ export interface ModelData {
   description?: string;
   thumbnail?: string;
   createdAt: string;
+  category?: string;
+  tags?: string[];
 }
 
 export interface ModelLibraryProps {
   onLoad: (id: string) => void;
   onDelete: (id: string) => Promise<{ success: boolean; error?: { type: string; message: string; } | undefined }>;
-  onUpdate: (id: string, name: string, description: string) => void;
+  onUpdate: (id: string, name: string, description: string, category?: string, tags?: string[]) => void;
 }
 
 export const ModelLibrary: React.FC<ModelLibraryProps> = ({
@@ -56,6 +59,8 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           description: record.description,
           thumbnail: thumbnails[record.uuid] || record.thumbnail,
           createdAt: record.createdAt.toISOString(),
+          category: record.category,
+          tags: record.tags,
         }));
         setModelList(transformedData);
         
@@ -96,10 +101,22 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     }
   }, [thumbnails]);
   
-  const filteredModels = modelList.filter((model) =>
-    model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    model.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Fuse.js instance for fuzzy search
+  const fuse = useMemo(() => {
+    return new Fuse(modelList, {
+      keys: ['name', 'description', 'tags'],
+      threshold: 0.3,
+      includeScore: true,
+    });
+  }, [modelList]);
+  
+  const filteredModels = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return modelList;
+    }
+    const results = fuse.search(searchQuery);
+    return results.map(result => result.item);
+  }, [searchQuery, fuse]);
 
   const handleEdit = (id: string) => {
     const model = modelList.find((m) => m.id === id);
@@ -108,8 +125,8 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     }
   };
 
-  const handleSave = (id: string, name: string, description: string) => {
-    onUpdate(id, name, description);
+  const handleSave = (id: string, name: string, description: string, category?: string, tags?: string[]) => {
+    onUpdate(id, name, description, category, tags);
     setEditingModel(undefined);
   };
 
