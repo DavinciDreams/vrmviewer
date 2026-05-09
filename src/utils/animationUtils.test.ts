@@ -4,6 +4,7 @@
 
 import * as THREE from 'three'
 import { AnimationClip, VectorKeyframeTrack, QuaternionKeyframeTrack } from 'three'
+import type { VRM } from '@pixiv/three-vrm'
 import {
   createAnimationClip,
   createKeyframeTrack,
@@ -154,7 +155,7 @@ describe('animationUtils', () => {
       mockBone.name = 'spine'
       mockVRM.humanoid.getNormalizedBoneNode.mockReturnValue(mockBone)
 
-      const clip = createIdleAnimationClip(mockVRM as any, 3)
+      const clip = createIdleAnimationClip(mockVRM as unknown as VRM, 3)
 
       expect(clip).toBeInstanceOf(AnimationClip)
       expect(clip.name).toBe('idle')
@@ -164,7 +165,7 @@ describe('animationUtils', () => {
     it('should handle missing bones', () => {
       mockVRM.humanoid.getNormalizedBoneNode.mockReturnValue(null)
 
-      const clip = createIdleAnimationClip(mockVRM as any, 3)
+      const clip = createIdleAnimationClip(mockVRM as unknown as VRM, 3)
 
       expect(clip.tracks).toHaveLength(0)
     })
@@ -174,7 +175,7 @@ describe('animationUtils', () => {
     it('should create blink animation clip', () => {
       mockVRM.expressionManager.hasExpression.mockReturnValue(true)
 
-      const clip = createBlinkAnimationClip(mockVRM as any, 0.15)
+      const clip = createBlinkAnimationClip(mockVRM as unknown as VRM, 0.15)
 
       expect(clip).toBeInstanceOf(AnimationClip)
       expect(clip.name).toBe('blink')
@@ -182,7 +183,7 @@ describe('animationUtils', () => {
     })
 
     it('should handle missing expression manager', () => {
-      const clip = createBlinkAnimationClip({ expressionManager: null } as any, 0.15)
+      const clip = createBlinkAnimationClip({ expressionManager: null } as unknown as VRM, 0.15)
 
       expect(clip.tracks).toHaveLength(0)
     })
@@ -190,7 +191,7 @@ describe('animationUtils', () => {
     it('should handle missing expressions', () => {
       mockVRM.expressionManager.hasExpression.mockReturnValue(false)
 
-      const clip = createBlinkAnimationClip(mockVRM as any, 0.15)
+      const clip = createBlinkAnimationClip(mockVRM as unknown as VRM, 0.15)
 
       expect(clip.tracks).toHaveLength(0)
     })
@@ -205,7 +206,7 @@ describe('animationUtils', () => {
         { time: 0.5, shape: 'aa', weight: 0 },
       ]
 
-      const clip = createLipSyncAnimationClip(mockVRM as any, visemes, 1)
+      const clip = createLipSyncAnimationClip(mockVRM as unknown as VRM, visemes, 1)
 
       expect(clip).toBeInstanceOf(AnimationClip)
       expect(clip.name).toBe('lipSync')
@@ -213,7 +214,7 @@ describe('animationUtils', () => {
     })
 
     it('should handle missing expression manager', () => {
-      const clip = createLipSyncAnimationClip({ expressionManager: null } as any, [], 1)
+      const clip = createLipSyncAnimationClip({ expressionManager: null } as unknown as VRM, [], 1)
 
       expect(clip.tracks).toHaveLength(0)
     })

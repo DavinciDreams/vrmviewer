@@ -3,6 +3,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { ExportData } from '../types/export.types'
 import {
   downloadFile,
   createExportProgress,
@@ -64,10 +65,17 @@ describe('exportUtils', () => {
 
   describe('createExportResult', () => {
     it('should create successful export result', () => {
-      const result = createExportResult(true, { filename: 'test.vrm' })
+      const exportData: ExportData = {
+        blob: new Blob(),
+        url: 'blob:http://localhost/test',
+        filename: 'test.vrm',
+        size: 0,
+        format: 'vrm',
+      }
+      const result = createExportResult(true, exportData)
 
       expect(result.success).toBe(true)
-      expect(result.data).toEqual({ filename: 'test.vrm' })
+      expect(result.data).toEqual(exportData)
       expect(result.error).toBeUndefined()
     })
 

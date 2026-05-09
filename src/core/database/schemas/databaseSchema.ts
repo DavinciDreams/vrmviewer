@@ -4,7 +4,12 @@
  */
 
 import Dexie, { Table } from 'dexie';
-import { AnimationRecord, ModelRecord, ThumbnailRecord } from '../../../types/database.types';
+import {
+  AnimationRecord,
+  ModelRecord,
+  PersistedStateRecord,
+  ThumbnailRecord,
+} from '../../../types/database.types';
 
 /**
  * VRM Viewer Database
@@ -15,6 +20,7 @@ export class VRMViewerDatabase extends Dexie {
   animations!: Table<AnimationRecord, number>;
   models!: Table<ModelRecord, number>;
   thumbnails!: Table<ThumbnailRecord, number>;
+  persistedState!: Table<PersistedStateRecord, string>;
 
   constructor() {
     super('VRMViewerDB');
@@ -27,6 +33,11 @@ export class VRMViewerDatabase extends Dexie {
       models: '++id, uuid, name, displayName, description, category, format, version, createdAt, updatedAt, size, *tags',
       // Thumbnails table
       thumbnails: '++id, uuid, name, type, targetUuid, createdAt',
+    });
+
+    // Version 2: add persistedState key/value store for Zustand persist payloads
+    this.version(2).stores({
+      persistedState: '&key, updatedAt',
     });
   }
 }
@@ -73,11 +84,15 @@ export async function deleteDatabase(): Promise<void> {
  * Database schema versions
  */
 export const SCHEMA_VERSIONS = {
-  CURRENT: 1,
+  CURRENT: 2,
   VERSIONS: [
     {
       version: 1,
       description: 'Initial schema with animations, models, and thumbnails tables',
+    },
+    {
+      version: 2,
+      description: 'Add persistedState key/value table for Zustand persist payloads',
     },
   ],
 };
@@ -87,7 +102,7 @@ export const SCHEMA_VERSIONS = {
  */
 export const DATABASE_CONFIG = {
   NAME: 'VRMViewerDB',
-  VERSION: 1,
+  VERSION: 2,
   MAX_SIZE: 500 * 1024 * 1024, // 500MB default
   CHUNK_SIZE: 1024 * 1024, // 1MB chunks for large files
 };
@@ -135,4 +150,12 @@ export const THUMBNAIL_INDEXES = {
   TYPE: 'type',
   TARGET_UUID: 'targetUuid',
   CREATED_AT: 'createdAt',
+};
+
+/**
+ * Index definitions for persistedState table
+ */
+export const PERSISTED_STATE_INDEXES = {
+  KEY: 'key',
+  UPDATED_AT: 'updatedAt',
 };

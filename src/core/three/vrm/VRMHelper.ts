@@ -36,6 +36,16 @@ export interface BoneTransform {
 }
 
 /**
+ * Skeleton hierarchy entry
+ */
+export interface SkeletonHierarchyEntry {
+  name: VRMHumanoidBoneName;
+  depth: number;
+  position: THREE.Vector3;
+  rotation: THREE.Quaternion;
+}
+
+/**
  * VRM Helper class
  */
 export class VRMHelper {
@@ -45,8 +55,8 @@ export class VRMHelper {
   public static getMetadata(vrm: VRM): VRMMetadata | null {
     if (!vrm.meta) return null;
 
-    // Handle different VRM versions
-    const meta = vrm.meta as any;
+    // Handle different VRM versions (0.x and 1.0 expose metadata under different field names)
+    const meta = vrm.meta as unknown as Record<string, string | undefined>;
     
     return {
       title: meta.title || meta.metaName || '',
@@ -381,10 +391,10 @@ export class VRMHelper {
   /**
    * Get VRM skeleton hierarchy
    */
-  public static getSkeletonHierarchy(vrm: VRM): any[] {
+  public static getSkeletonHierarchy(vrm: VRM): SkeletonHierarchyEntry[] {
     if (!vrm.humanoid) return [];
-    
-    const hierarchy: any[] = [];
+
+    const hierarchy: SkeletonHierarchyEntry[] = [];
     
     const addBone = (boneName: VRMHumanoidBoneName, depth: number = 0) => {
       const bone = vrm.humanoid!.getNormalizedBoneNode(boneName);

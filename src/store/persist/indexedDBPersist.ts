@@ -1,76 +1,75 @@
 /**
  * IndexedDB Persistence for Zustand
- * Provides type-safe persistence to IndexedDB using Dexie.js
- * 
- * This module creates a custom storage adapter for Zustand's persist middleware
- * that stores data in IndexedDB instead of localStorage.
+ *
+ * Storage adapter for Zustand's `persist` middleware that writes to IndexedDB
+ * (via the existing Dexie-backed `VRMViewerDB.persistedState` table) instead
+ * of localStorage. Use this for state payloads that exceed the ~5MB localStorage
+ * cap or that need to survive in IndexedDB alongside the rest of the app data.
  */
 
+import { getDatabase } from '../../core/database/schemas/databaseSchema';
 import { DatabaseError } from '../../types/database.types';
 
 /**
- * Storage adapter for IndexedDB
- * Implements Zustand persist storage API using Dexie.js
+ * Build the row key for a given store + entry name.
+ * Keys are namespaced so multiple Zustand stores can share the table.
+ */
+function buildKey(storeName: string, key: string): string {
+  return `zustand:${storeName}:${key}`;
+}
+
+/**
+ * Storage adapter for IndexedDB.
+ * Implements Zustand's `StateStorage` interface (string get/set/remove).
  */
 export class IndexedDBStorage {
   private storeName: string;
 
   constructor(storeName: string) {
-    this.storeName = `zustand_${storeName}`;
+    this.storeName = storeName;
   }
 
-  /**
-   * Get item from IndexedDB
-   */
   async getItem(key: string): Promise<string | null> {
     try {
-      const localStorageKey = `${this.storeName}_${key}`;
-      const value = localStorage.getItem(localStorageKey);
-      
-      if (value) {
-        console.debug(`[IndexedDB Storage] Retrieved ${key} for ${this.storeName}`);
-        return value;
-      }
-
-      return null;
+      const row = await getDatabase().persistedState.get(buildKey(this.storeName, key));
+      return row?.value ?? null;
     } catch (error) {
       console.error('[IndexedDB Storage] Error getting item:', error);
       throw this.createError('Failed to get item from storage', error);
     }
   }
 
-  /**
-   * Set item in IndexedDB
-   */
   async setItem(key: string, value: string): Promise<void> {
     try {
-      const localStorageKey = `${this.storeName}_${key}`;
-      localStorage.setItem(localStorageKey, value);
-      console.debug(`[IndexedDB Storage] Saved ${key} for ${this.storeName}`);
+      await getDatabase().persistedState.put({
+        key: buildKey(this.storeName, key),
+        value,
+        updatedAt: new Date(),
+      });
     } catch (error) {
       console.error('[IndexedDB Storage] Error setting item:', error);
       throw this.createError('Failed to set item in storage', error);
     }
   }
 
-  /**
-   * Remove item from IndexedDB
-   */
   async removeItem(key: string): Promise<void> {
     try {
-      const localStorageKey = `${this.storeName}_${key}`;
-      localStorage.removeItem(localStorageKey);
-      console.debug(`[IndexedDB Storage] Removed ${key} for ${this.storeName}`);
+      await getDatabase().persistedState.delete(buildKey(this.storeName, key));
     } catch (error) {
       console.error('[IndexedDB Storage] Error removing item:', error);
       throw this.createError('Failed to remove item from storage', error);
     }
   }
 
-  /**
-   * Create a database error
-   */
   private createError(message: string, details: unknown): Error {
+    if (details instanceof DOMException && details.name === 'QuotaExceededError') {
+      const quotaError: DatabaseError = {
+        type: 'QUOTA_EXCEEDED',
+        message: 'IndexedDB storage quota exceeded',
+        details,
+      };
+      return new Error(quotaError.message);
+    }
     const dbError: DatabaseError = {
       type: 'TRANSACTION_ERROR',
       message,
@@ -82,19 +81,17 @@ export class IndexedDBStorage {
 
 /**
  * Create IndexedDB storage adapter for Zustand persist
- * 
- * @param storeName - Name of the store (used as prefix for storage keys)
+ *
+ * @param storeName - Name of the store (used as namespace for storage keys)
  * @returns Storage adapter compatible with Zustand persist middleware
- * 
+ *
  * @example
  * ```typescript
  * import { createIndexedDBStorage } from './store/persist/indexedDBPersist';
- * 
+ *
  * const useMyStore = create<MyState>()(
  *   persist(
- *     (set) => ({
- *       // state...
- *     }),
+ *     (set) => ({ /* state... *\/ }),
  *     {
  *       name: 'my-store',
  *       storage: createIndexedDBStorage('my-store'),
@@ -103,70 +100,28 @@ export class IndexedDBStorage {
  * );
  * ```
  */
-export function createIndexedDBStorage(
-  storeName: string
-): IndexedDBStorage {
+export function createIndexedDBStorage(storeName: string): IndexedDBStorage {
   return new IndexedDBStorage(storeName);
 }
 
 /**
  * IndexedDB Persist Configuration
- * Configuration options for IndexedDB persistence
  */
 export interface IndexedDBPersistConfig {
-  /**
-   * Name of the store (used for storage key)
-   */
+  /** Name of the store (used for storage key namespace) */
   name: string;
-
-  /**
-   * Version of the storage schema (for migrations)
-   */
+  /** Version of the storage schema (for migrations) */
   version?: number;
-
-  /**
-   * Called after state is successfully loaded from storage
-   */
+  /** Called after state is successfully loaded from storage */
   onRehydrateStorage?: (state?: unknown) => void;
-
-  /**
-   * Called if there's an error during persistence
-   */
+  /** Called if there's an error during persistence */
   onError?: (error: Error) => void;
 }
 
 /**
  * Create persist configuration with IndexedDB storage
- * 
- * @param config - Configuration options
- * @returns Persist configuration object for Zustand
- * 
- * @example
- * ```typescript
- * const persistConfig = createIndexedDBPersistConfig({
- *   name: 'model-library',
- *   version: 1,
- *   onRehydrateStorage: (state) => {
- *     console.log('State rehydrated:', state);
- *   },
- *   onError: (error) => {
- *     console.error('Persistence error:', error);
- *   },
- * });
- * 
- * const useModelLibraryStore = create<ModelLibraryState>()(
- *   persist(
- *     (set) => ({
- *       // state...
- *     }),
- *     persistConfig
- *   )
- * );
- * ```
  */
-export function createIndexedDBPersistConfig(
-  config: IndexedDBPersistConfig
-): {
+export function createIndexedDBPersistConfig(config: IndexedDBPersistConfig): {
   name: string;
   storage: IndexedDBStorage;
   version: number;
@@ -184,14 +139,11 @@ export function createIndexedDBPersistConfig(
 
 /**
  * Clear persisted state for a store
- * 
- * @param storeName - Name of the store to clear
  */
 export async function clearPersistedState(storeName: string): Promise<void> {
   try {
     const storage = createIndexedDBStorage(storeName);
     await storage.removeItem('state');
-    console.debug(`[IndexedDB Persist] Cleared state for ${storeName}`);
   } catch (error) {
     console.error('[IndexedDB Persist] Error clearing state:', error);
     throw error;
@@ -200,9 +152,6 @@ export async function clearPersistedState(storeName: string): Promise<void> {
 
 /**
  * Check if persisted state exists for a store
- * 
- * @param storeName - Name of the store to check
- * @returns True if persisted state exists
  */
 export async function hasPersistedState(storeName: string): Promise<boolean> {
   try {
@@ -217,9 +166,6 @@ export async function hasPersistedState(storeName: string): Promise<boolean> {
 
 /**
  * Get raw persisted state for a store
- * 
- * @param storeName - Name of the store
- * @returns The persisted state or null
  */
 export async function getPersistedState(storeName: string): Promise<string | null> {
   try {

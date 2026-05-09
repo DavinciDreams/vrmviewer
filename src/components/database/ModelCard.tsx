@@ -47,7 +47,7 @@ export const ModelCard: React.FC<ModelCardProps> = ({
       } else {
         setIsDeleteDialogOpen(false);
       }
-    } catch (error) {
+    } catch (_error) {
       setDeleteError('An unexpected error occurred');
     } finally {
       setIsDeleting(false);

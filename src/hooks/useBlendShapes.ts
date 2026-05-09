@@ -3,8 +3,23 @@
  * Custom hook for blend shape management
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ExpressionPresetName } from '../constants/blendShapes';
+
+const DEFAULT_BLEND_SHAPES = [
+  'blink',
+  'blinkLeft',
+  'blinkRight',
+  'happy',
+  'angry',
+  'sad',
+  'surprised',
+  'aa',
+  'ih',
+  'ou',
+  'ee',
+  'oh',
+];
 
 /**
  * Blend shape hook return type
@@ -32,8 +47,8 @@ export interface BlendShapeControls {
  * you would integrate with the BlendShapeManager from the animation system.
  */
 export function useBlendShapes(): BlendShapeControls {
-  // State
-  const [availableBlendShapes, setAvailableBlendShapes] = useState<string[]>([]);
+  // State — placeholder list until VRM-driven discovery is wired up.
+  const [availableBlendShapes] = useState<string[]>(DEFAULT_BLEND_SHAPES);
   const [currentBlendShapes, setCurrentBlendShapes] = useState<Record<string, number>>({});
   const [currentExpression, setCurrentExpression] = useState<ExpressionPresetName | null>(null);
   const [expressionWeight, setExpressionWeight] = useState<number>(1);
@@ -88,26 +103,6 @@ export function useBlendShapes(): BlendShapeControls {
   const hasBlendShape = useCallback((name: string): boolean => {
     return availableBlendShapes.includes(name);
   }, [availableBlendShapes]);
-
-  // Initialize available blend shapes (placeholder)
-  useEffect(() => {
-    // In a real implementation, this would get available blend shapes from the VRM model
-    const defaultBlendShapes = [
-      'blink',
-      'blinkLeft',
-      'blinkRight',
-      'happy',
-      'angry',
-      'sad',
-      'surprised',
-      'aa',
-      'ih',
-      'ou',
-      'ee',
-      'oh',
-    ];
-    setAvailableBlendShapes(defaultBlendShapes);
-  }, []);
 
   return {
     // State

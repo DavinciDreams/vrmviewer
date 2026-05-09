@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Dialog } from '../ui/Dialog';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -22,15 +22,17 @@ export const AnimationEditor: React.FC<AnimationEditorProps> = ({
   onSave,
   animation,
 }) => {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState(animation?.name ?? '');
+  const [description, setDescription] = useState(animation?.description ?? '');
+  const [lastAnimationId, setLastAnimationId] = useState(animation?.id);
 
-  useEffect(() => {
-    if (animation) {
-      setName(animation.name);
-      setDescription(animation.description || '');
-    }
-  }, [animation]);
+  // Adjust state during render when the edited animation changes (React docs
+  // pattern). Avoids the cascading-render warning of doing this inside useEffect.
+  if (animation?.id !== lastAnimationId) {
+    setLastAnimationId(animation?.id);
+    setName(animation?.name ?? '');
+    setDescription(animation?.description ?? '');
+  }
 
   const handleSave = () => {
     if (!name.trim()) return;

@@ -100,7 +100,7 @@ export class DatabaseService {
     try {
       // Check if all tables exist
       const tableNames = this.db.tables.map((table) => table.name);
-      const expectedTables = ['animations', 'models', 'thumbnails'];
+      const expectedTables = ['animations', 'models', 'thumbnails', 'persistedState'];
 
       for (const expectedTable of expectedTables) {
         if (!tableNames.includes(expectedTable)) {

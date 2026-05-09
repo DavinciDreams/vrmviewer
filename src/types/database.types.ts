@@ -95,6 +95,17 @@ export interface ThumbnailRecord {
 }
 
 /**
+ * Persisted State Record
+ * Key-value entry for arbitrary state (e.g. Zustand `persist` payloads).
+ * `key` is the primary key.
+ */
+export interface PersistedStateRecord {
+  key: string;
+  value: string;
+  updatedAt: Date;
+}
+
+/**
  * Database Query Options
  * Options for querying the database
  */

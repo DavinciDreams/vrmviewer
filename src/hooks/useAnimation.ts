@@ -42,7 +42,7 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, setError]);
+  }, [setAnimation, clearError, setMetadata, setError]);
 
   /**
    * Load animation from File
@@ -63,7 +63,7 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, setError]);
+  }, [setAnimation, clearError, setMetadata, setError]);
 
   /**
    * Load animation from ArrayBuffer
@@ -84,7 +84,7 @@ export function useAnimation() {
     } else {
       setError(result.error?.message || 'Failed to load animation');
     }
-  }, [loaderManager, setAnimation, clearError, setMetadata, setError]);
+  }, [setAnimation, clearError, setMetadata, setError]);
 
   /**
    * Play animation

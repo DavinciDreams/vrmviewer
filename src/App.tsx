@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
 import { VRMViewer, VRMViewerHandle } from './components/viewer/VRMViewer';
 import { ThumbnailCapture } from './components/viewer/ThumbnailCapture';
@@ -84,8 +84,8 @@ function App() {
   const [unsavedThumbnailData, setUnsavedThumbnailData] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Thumbnail service
-  const thumbnailService = getThumbnailService();
+  // Thumbnail service (singleton — stable identity for hook deps)
+  const thumbnailService = useMemo(() => getThumbnailService(), []);
   const [autoCapturedThumbnail, setAutoCapturedThumbnail] = useState<string | null>(null);
   
   /**
@@ -108,27 +108,12 @@ function App() {
   }, [currentModel, currentAnimation, startIdleAnimation, stopIdleAnimation]);
   
   /**
-   * Handle file drop
-   */
-  const handleDrop = useCallback(async (files: File[]) => {
-    if (!isInitialized) {
-      console.warn('Database not initialized yet. Please wait...');
-      return;
-    }
-    setDroppedFiles((prev) => [...prev, ...files]);
-    
-    for (const file of files) {
-      await handleFileLoad(file);
-    }
-  }, [isInitialized]);
-  
-  /**
    * Handle file load
    */
   const handleFileLoad = useCallback(async (file: File) => {
     const extension = getFileExtension(file.name);
     const fileType = getFileTypeFromExtension(extension);
-    
+
     if (fileType === 'model') {
       // Clear current model and unsaved state before loading new model
       clearCurrentModel();
@@ -137,7 +122,7 @@ function App() {
       setUnsavedModelData(null);
       setUnsavedThumbnailData(null);
       setAutoCapturedThumbnail(null);
-      
+
       // Load model
       const model = await loadModelFromFile(file);
       if (model) {
@@ -164,7 +149,22 @@ function App() {
           }
       }
     }
-  }, [loadModelFromFile, metadata, models]);
+  }, [loadModelFromFile, clearCurrentModel]);
+
+  /**
+   * Handle file drop
+   */
+  const handleDrop = useCallback(async (files: File[]) => {
+    if (!isInitialized) {
+      console.warn('Database not initialized yet. Please wait...');
+      return;
+    }
+    setDroppedFiles((prev) => [...prev, ...files]);
+
+    for (const file of files) {
+      await handleFileLoad(file);
+    }
+  }, [isInitialized, handleFileLoad]);
   
   /**
    * Handle save model (manual save from unsaved state)
@@ -271,7 +271,7 @@ function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models]);
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models, thumbnailService]);
   
   /**
    * Handle animation save
@@ -529,7 +529,7 @@ function App() {
     } finally {
       setIsCapturing(false);
     }
-  }, [currentModelUuid, unsavedModelFile, models]);
+  }, [currentModelUuid, unsavedModelFile, models, thumbnailService]);
   
   /**
    * Handle play
