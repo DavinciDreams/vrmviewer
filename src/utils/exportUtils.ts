@@ -6,6 +6,7 @@
 import { saveAs } from 'file-saver';
 import {
   ExportResult,
+  ExportData,
   ExportProgress,
   ExportValidationResult,
   ExportValidationError,
@@ -45,7 +46,7 @@ export function createExportProgress(
  */
 export function createExportResult(
   success: boolean,
-  data?: any,
+  data?: ExportData,
   error?: ExportError
 ): ExportResult {
   return {
@@ -295,7 +296,9 @@ export function sanitizeFilename(filename: string): string {
   // Remove any path traversal attempts
   const sanitized = filename.replace(/[\\/:*?"<>|]/g, '_');
 
-  // Remove control characters
+  // Remove ASCII/C1 control characters intentionally — needed to neutralize
+  // filenames before saving. The pattern targets exactly those characters.
+  // eslint-disable-next-line no-control-regex
   return sanitized.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
 }
 

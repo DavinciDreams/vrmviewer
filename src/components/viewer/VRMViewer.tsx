@@ -3,7 +3,7 @@
  * Main 3D viewer component with animation support
  */
 
-import { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { useCallback, useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
 import { useVRMStore } from '../../store/vrmStore';
@@ -130,7 +130,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   /**
    * Capture thumbnail
    */
-  const captureThumbnailMethod = async (options?: { size?: number; format?: 'png' | 'jpeg' | 'webp' }) => {
+  const captureThumbnailMethod = useCallback(async (options?: { size?: number; format?: 'png' | 'jpeg' | 'webp' }) => {
     if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
       throw new Error('Viewer not initialized');
     }
@@ -146,12 +146,12 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         backgroundColor: '#1a1a2e', // Match scene background
       }
     );
-  };
+  }, []);
 
   /**
    * Capture and save thumbnail for current model
    */
-  const captureAndSaveThumbnailMethod = async (
+  const captureAndSaveThumbnailMethod = useCallback(async (
     modelUuid: string,
     modelName: string
   ) => {
@@ -168,11 +168,11 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         sceneRef.current,
         cameraRef.current
       );
-      
+
       // Note: Actual saving to database should be handled by the caller
       // This method just captures the thumbnail for the given model
       console.log(`Thumbnail captured for model ${modelName} (${modelUuid})`);
-      
+
       return {
         success: true,
         thumbnail,
@@ -183,7 +183,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         error: error instanceof Error ? error.message : 'Unknown error occurred',
       };
     }
-  };
+  }, [capture]);
 
   /**
    * Expose methods via ref
@@ -427,7 +427,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isInitialized]);
+  }, [isInitialized, onAnimationFrame]);
 
   return (
     <div className="relative w-full h-full bg-gray-900">

@@ -196,9 +196,9 @@ export const useModelLibraryStore = create<ModelLibraryState & ModelLibraryActio
       }),
       {
         name: 'model-library-storage',
-        // Persist models, filters, and view settings
+        // Source of truth for model records is the Dexie `models` table.
+        // Only UI preferences are persisted here.
         partialize: (state) => ({
-          models: state.models,
           filters: state.filters,
           viewMode: state.viewMode,
           sortBy: state.sortBy,

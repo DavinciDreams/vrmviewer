@@ -2,7 +2,7 @@
  * Playback Store Tests
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { usePlaybackStore } from './playbackStore'
 
 describe('playbackStore', () => {

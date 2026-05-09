@@ -196,9 +196,9 @@ export const useAnimationLibraryStore = create<AnimationLibraryState & Animation
       }),
       {
         name: 'animation-library-storage',
-        // Persist animations, filters, and view settings
+        // Source of truth for animation records is the Dexie `animations` table.
+        // Only UI preferences are persisted here.
         partialize: (state) => ({
-          animations: state.animations,
           filters: state.filters,
           viewMode: state.viewMode,
           sortBy: state.sortBy,

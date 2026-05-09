@@ -21,8 +21,8 @@ export function useDatabase() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [animationService, setAnimationService] = useState<ReturnType<typeof getAnimationService> | null>(null);
   const [modelService, setModelService] = useState<ReturnType<typeof getModelService> | null>(null);
-  // Store database service instance directly (not destructured as array)
-  const dbService = getDatabaseService();
+  // Singleton; useMemo gives a stable reference for hook deps.
+  const dbService = useMemo(() => getDatabaseService(), []);
 
   // Initialize database on mount
   useEffect(() => {
@@ -44,14 +44,14 @@ export function useDatabase() {
     };
 
     init();
-  }, []);
+  }, [dbService]);
 
   /**
    * Get all animations
    */
   const getAllAnimations = async (options?: DatabaseQueryOptions) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
     const result = await svc.getAllAnimations();
 
@@ -59,7 +59,7 @@ export function useDatabase() {
       return svc.filterAnimations(options);
     }
 
-    return result as any;
+    return result;
   };
 
   /**
@@ -67,9 +67,9 @@ export function useDatabase() {
    */
   const getAnimationById = async (id: number) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
-    return await svc.loadAnimationById(id) as any;
+    return await svc.loadAnimationById(id);
   };
 
   /**
@@ -77,9 +77,9 @@ export function useDatabase() {
    */
   const getAnimationByUuid = async (uuid: string) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
-    return await svc.loadAnimation(uuid) as any;
+    return await svc.loadAnimation(uuid);
   };
 
   /**
@@ -90,9 +90,9 @@ export function useDatabase() {
     thumbnail?: string
   ) => {
     const svc = animationService;
-    if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Animation service not initialized' }, data: undefined };
+    if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Animation service not initialized' }, data: undefined };
     await svc.initialize();
-    return await svc.saveAnimation(animation, thumbnail) as any;
+    return await svc.saveAnimation(animation, thumbnail);
   };
 
   /**
@@ -363,6 +363,10 @@ export function useDatabase() {
       getRecent: getRecentAnimations,
       exists: animationExists,
       clearAll: clearAllAnimations,
+      // The closures here all read from animationService at call time, so
+      // animationService is the only meaningful dependency. The closures are
+      // re-created each render but functionally equivalent.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [animationService]),
     models: useMemo(() => ({
       getAll: getAllModels,
@@ -384,9 +388,13 @@ export function useDatabase() {
       getRecent: getRecentModels,
       exists: modelExists,
       clearAll: clearAllModels,
+      // Closures all read from modelService at call time; see note above.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [modelService]),
     statistics: useMemo(() => ({
       get: getDatabaseStatistics,
+      // Closure reads dbService at call time; identity is stable.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }), []),
     clearAll: clearAllData,
   };

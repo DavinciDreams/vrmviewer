@@ -16,5 +16,24 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    chunkSizeWarningLimit: 700,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          minSize: 20000,
+          // Order matters: first matching group wins; vendor catches the rest.
+          groups: [
+            { name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/ },
+            { name: 'vrm', test: /[\\/]node_modules[\\/]@pixiv[\\/]/ },
+            {
+              name: 'react',
+              test: /[\\/]node_modules[\\/](react|react-dom|react-dropzone|scheduler)[\\/]/,
+            },
+            { name: 'dexie', test: /[\\/]node_modules[\\/]dexie[\\/]/ },
+            { name: 'vendor', test: /[\\/]node_modules[\\/]/ },
+          ],
+        },
+      },
+    },
   },
 })

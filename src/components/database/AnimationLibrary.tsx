@@ -3,6 +3,7 @@ import { AnimationCard } from './AnimationCard';
 import { Input } from '../ui/Input';
 import { AnimationEditor } from './AnimationEditor';
 import { useDatabase } from '../../hooks/useDatabase';
+import type { AnimationRecord } from '../../types/database.types';
 
 export interface AnimationData {
   id: string;
@@ -40,13 +41,15 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
         setIsLoading(true);
         setError(null);
         const result = await animations.getAll();
-        
+
         // Extract data from result - handle both DatabaseOperationResult and DatabaseQueryResult types
-        const records = result.success && result.data ? result.data : null;
-        
+        const records =
+          'data' in result && Array.isArray(result.data)
+            ? (result.data as AnimationRecord[])
+            : null;
+
         if (records) {
-          // Transform AnimationRecord to AnimationData
-          const transformedData: AnimationData[] = records.map((record: any) => ({
+          const transformedData: AnimationData[] = records.map((record) => ({
             id: record.uuid,
             name: record.name,
             description: record.description,

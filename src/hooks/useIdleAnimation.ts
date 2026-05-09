@@ -3,7 +3,7 @@
  * Custom hook for idle animation control (breathing, blinking)
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 /**
  * Breathing configuration
@@ -89,7 +89,10 @@ export function useIdleAnimation(): IdleAnimationControls {
   // State
   const [breathing, setBreathing] = useState<BreathingConfig>(defaultBreathingConfig);
   const [blinking, setBlinking] = useState<BlinkingConfig>(defaultBlinkingConfig);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
+  // Mirror prior auto-start semantics: running by default if any idle feature is enabled.
+  const [isRunning, setIsRunning] = useState<boolean>(
+    defaultBreathingConfig.enabled || defaultBlinkingConfig.enabled,
+  );
 
   // Start idle animations
   const start = useCallback(() => {
@@ -106,9 +109,11 @@ export function useIdleAnimation(): IdleAnimationControls {
     setIsRunning((prev) => !prev);
   }, []);
 
-  // Set breathing enabled
+  // Set breathing enabled. Auto-starts when turning on, mirroring the prior
+  // useEffect-based sync but moved into the event handler.
   const setBreathingEnabled = useCallback((enabled: boolean) => {
     setBreathing((prev) => ({ ...prev, enabled }));
+    if (enabled) setIsRunning(true);
   }, []);
 
   // Set breathing rate
@@ -121,9 +126,10 @@ export function useIdleAnimation(): IdleAnimationControls {
     setBreathing((prev) => ({ ...prev, depth: Math.max(0, Math.min(1, depth)) }));
   }, []);
 
-  // Set blinking enabled
+  // Set blinking enabled. Auto-starts when turning on (event-handler form).
   const setBlinkingEnabled = useCallback((enabled: boolean) => {
     setBlinking((prev) => ({ ...prev, enabled }));
+    if (enabled) setIsRunning(true);
   }, []);
 
   // Set blinking frequency
@@ -144,13 +150,6 @@ export function useIdleAnimation(): IdleAnimationControls {
   const setRandomizeBlinking = useCallback((randomize: boolean) => {
     setBlinking((prev) => ({ ...prev, randomize }));
   }, []);
-
-  // Auto-start if enabled
-  useEffect(() => {
-    if (breathing.enabled || blinking.enabled) {
-      setIsRunning(true);
-    }
-  }, [breathing.enabled, blinking.enabled]);
 
   return {
     // State
