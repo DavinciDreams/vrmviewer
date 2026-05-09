@@ -129,7 +129,8 @@ describe('Button', () => {
       render(<Button>Click me</Button>)
 
       const button = screen.getByRole('button')
-      expect(button).toHaveAttribute('tabIndex', '0')
+      button.focus()
+      expect(button).toHaveFocus()
     })
 
     it('should not be focusable when disabled', () => {
