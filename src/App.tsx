@@ -11,6 +11,7 @@ import { CameraControls } from './components/controls/CameraControls';
 import { ExpressionPanel } from './components/controls/ExpressionPanel';
 import { IdleAnimationPanel } from './components/controls/IdleAnimationPanel';
 import { LightingPanel } from './components/controls/LightingPanel';
+import { PosePanel } from './components/controls/PosePanel';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
 import { Button } from './components/ui/Button';
@@ -89,6 +90,7 @@ function App() {
   const [isExpressionPanelOpen, setIsExpressionPanelOpen] = useState(false);
   const [isIdlePanelOpen, setIsIdlePanelOpen] = useState(false);
   const [isLightingPanelOpen, setIsLightingPanelOpen] = useState(false);
+  const [isPosePanelOpen, setIsPosePanelOpen] = useState(false);
   
   // Track thumbnail capture state for visual feedback
   const [isCapturing, setIsCapturing] = useState(false);
@@ -1020,6 +1022,36 @@ function App() {
                   {isIdlePanelOpen && (
                     <div id="idle-panel">
                       <IdleAnimationPanel />
+                    </div>
+                  )}
+                </div>
+
+                {/* Pose */}
+                <div>
+                  <button
+                    onClick={() => setIsPosePanelOpen((v) => !v)}
+                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
+                    aria-expanded={isPosePanelOpen}
+                    aria-controls="pose-panel"
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Pose
+                    </span>
+                    <svg
+                      className={`w-4 h-4 transition-transform ${isPosePanelOpen ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isPosePanelOpen && (
+                    <div id="pose-panel">
+                      <PosePanel vrm={currentModel?.vrm ?? null} />
                     </div>
                   )}
                 </div>
