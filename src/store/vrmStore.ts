@@ -45,15 +45,20 @@ export const useVRMStore = create<VRMStoreState & VRMStoreActions>()(
       error: null,
       metadata: null,
 
-      // Actions
+      // Actions — successful state transitions implicitly clear any prior
+      // error. A previous "VRM parse failed" message is no longer relevant
+      // once a fresh model loads, the loading flag flips, or the model is
+      // explicitly cleared.
       setModel: (model) =>
         set({
           currentModel: model,
+          error: null,
         }),
 
       setLoading: (loading) =>
         set({
           isLoading: loading,
+          error: null,
         }),
 
       setError: (error) =>
@@ -75,6 +80,7 @@ export const useVRMStore = create<VRMStoreState & VRMStoreActions>()(
         set({
           currentModel: null,
           metadata: null,
+          error: null,
         }),
     }),
     {

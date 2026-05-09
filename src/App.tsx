@@ -278,9 +278,14 @@ function App() {
     let attached = false;
     let controls: ReturnType<NonNullable<typeof cameraManager>['getControls']> | null = null;
 
+    let cancelled = false;
     const handleControlsChange = () => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
+        // The effect's cleanup may have already run between schedule and fire
+        // (e.g. on hot reload, or if `isInitialized` flips). Bail rather than
+        // writing stale coords past the cleanup.
+        if (cancelled) return;
         if (!cameraManager) return;
         const cam = cameraManager.getCamera();
         const ctrls = cameraManager.getControls();
@@ -312,6 +317,7 @@ function App() {
     poll(20);
 
     return () => {
+      cancelled = true;
       if (pollHandle) clearTimeout(pollHandle);
       if (saveTimer) clearTimeout(saveTimer);
       if (attached && controls) {
@@ -976,11 +982,12 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {isExpressionPanelOpen && (
-                    <div id="expression-panel">
-                      <ExpressionPanel />
-                    </div>
-                  )}
+                  {/* Always render — `aria-controls` references must point at
+                      a live DOM node per ARIA spec. `hidden` plus the
+                      conditional inner mount keeps the cost low. */}
+                  <div id="expression-panel" hidden={!isExpressionPanelOpen}>
+                    {isExpressionPanelOpen && <ExpressionPanel />}
+                  </div>
                 </div>
 
                 {/* Idle motion */}
@@ -1006,11 +1013,9 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {isIdlePanelOpen && (
-                    <div id="idle-panel">
-                      <IdleAnimationPanel />
-                    </div>
-                  )}
+                  <div id="idle-panel" hidden={!isIdlePanelOpen}>
+                    {isIdlePanelOpen && <IdleAnimationPanel />}
+                  </div>
                 </div>
 
                 {/* Pose */}
@@ -1036,11 +1041,9 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {isPosePanelOpen && (
-                    <div id="pose-panel">
-                      <PosePanel vrm={currentModel?.vrm ?? null} />
-                    </div>
-                  )}
+                  <div id="pose-panel" hidden={!isPosePanelOpen}>
+                    {isPosePanelOpen && <PosePanel vrm={currentModel?.vrm ?? null} />}
+                  </div>
                 </div>
 
                 {/* Lighting */}
@@ -1066,11 +1069,9 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {isLightingPanelOpen && (
-                    <div id="lighting-panel">
-                      <LightingPanel />
-                    </div>
-                  )}
+                  <div id="lighting-panel" hidden={!isLightingPanelOpen}>
+                    {isLightingPanelOpen && <LightingPanel />}
+                  </div>
                 </div>
 
                 {/* Camera */}
@@ -1097,11 +1098,9 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {isCameraPanelOpen && (
-                    <div id="camera-controls-panel">
-                      <CameraControls />
-                    </div>
-                  )}
+                  <div id="camera-controls-panel" hidden={!isCameraPanelOpen}>
+                    {isCameraPanelOpen && <CameraControls />}
+                  </div>
                 </div>
               </div>
             </>

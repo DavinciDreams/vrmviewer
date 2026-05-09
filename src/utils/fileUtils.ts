@@ -12,17 +12,37 @@ import {
 } from '../constants/formats';
 
 /**
- * Read file as text
+ * Read file as text.
+ *
+ * Prefer the native `Blob.text()` when available (every real browser); fall
+ * back to `FileReader.readAsText` for environments whose `Blob` polyfill
+ * lacks the streaming method (happy-dom 20.x in our test setup).
  */
 export async function readFileAsText(file: File): Promise<string> {
-  return file.text();
+  if (typeof file.text === 'function') {
+    return file.text();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
 }
 
 /**
- * Read file as ArrayBuffer
+ * Read file as ArrayBuffer. Same fallback strategy as `readFileAsText`.
  */
 export async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return file.arrayBuffer();
+  if (typeof file.arrayBuffer === 'function') {
+    return file.arrayBuffer();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 /**
@@ -125,8 +145,9 @@ export async function detectFileType(arrayBuffer: ArrayBuffer): Promise<{ format
     return { format: 'glb', type: 'model' };
   }
 
-  // FBX signature (Kaydara)
-  if (headerStr === 'Kaydara') {
+  // FBX signature: binary FBX files begin with "Kaydara FBX Binary".
+  // We only sliced 4 bytes above, so compare the first 4 chars ('Kayd').
+  if (headerStr === 'Kayd') {
     return { format: 'fbx', type: 'model' };
   }
 

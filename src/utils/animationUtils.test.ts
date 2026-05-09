@@ -392,9 +392,14 @@ describe('animationUtils', () => {
     })
 
     it('should reject clip with track having no keyframes', () => {
-      const clip = new AnimationClip('test', 1, [
-        new VectorKeyframeTrack('bone.position', [], []),
-      ])
+      // Three.js's KeyframeTrack constructor now throws on empty
+      // times/values, so build a valid track and zero out its buffers
+      // afterwards — that's the runtime state validateAnimationClip is
+      // expected to defend against.
+      const track = new VectorKeyframeTrack('bone.position', [0], [0, 0, 0])
+      track.times = new Float32Array(0)
+      track.values = new Float32Array(0)
+      const clip = new AnimationClip('test', 1, [track])
       const result = validateAnimationClip(clip)
 
       expect(result.valid).toBe(false)

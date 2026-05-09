@@ -80,8 +80,12 @@ describe('exportUtils', () => {
     })
 
     it('should create failed export result', () => {
-      const error = { type: 'validation' as const, message: 'Invalid data' }
-      const result = createExportResult(false, undefined, { type: 'INVALID_FORMAT' as any, message: 'Invalid data' })
+      // The test was inconsistent: it built an `error` with type 'validation'
+      // but passed `INVALID_FORMAT` to `createExportResult`. The function
+      // returns whatever error you give it, so the assertion should match
+      // the input.
+      const error = { type: 'INVALID_FORMAT' as const, message: 'Invalid data' }
+      const result = createExportResult(false, undefined, error)
 
       expect(result.success).toBe(false)
       expect(result.data).toBeUndefined()

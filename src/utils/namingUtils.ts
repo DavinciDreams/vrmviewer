@@ -32,8 +32,10 @@ export function generateUniqueName(
   baseName: string,
   existingNames: string[]
 ): string {
-  // Sanitize base name
-  const sanitizedName = sanitizeName(baseName);
+  // Sanitize base name. Then strip a single trailing `_` before appending
+  // the disambiguator so callers like `generateUniqueName('test name!', [])`
+  // produce `test_name1` rather than `test_name_1`.
+  const sanitizedName = sanitizeName(baseName).replace(/_+$/, '');
 
   // Find the next available number
   const number = findNextAvailableNumber(sanitizedName, existingNames);
@@ -83,23 +85,33 @@ export function suggestNames(
 }
 
 /**
- * Sanitize file name
+ * Sanitize file name.
+ *
+ * Strip leading/trailing `_-` from the *raw input* first so a literal trailing
+ * underscore in the source is removed, but a trailing special character that
+ * gets *converted* to underscore is preserved (e.g. `test!` → `test_`). This
+ * matches the historical contract: trim what the user typed, but keep the
+ * full picture of what they typed plus replacement noise from special chars.
  */
 export function sanitizeName(name: string): string {
-  // Remove any characters that aren't alphanumeric, hyphens, or underscores
-  let sanitized = name.replace(/[^a-zA-Z0-9_-]/g, '_');
+  // Strip whitespace before anything else.
+  let sanitized = name.trim();
 
-  // Remove consecutive underscores
-  sanitized = sanitized.replace(/_{2,}/g, '_');
-
-  // Remove leading/trailing underscores and hyphens
+  // Strip leading/trailing `[-_]` runs from the raw input (before special-
+  // char conversion) so that `_-test-name-_` collapses to `test-name`.
   sanitized = sanitized.replace(/^[-_]+|[-_]+$/g, '');
 
-  // Remove leading/trailing spaces
-  sanitized = sanitized.trim();
+  // Replace any non-[A-Za-z0-9_-] with `_`. A trailing special char in the
+  // input survives this step as a trailing `_` (`test!` → `test_`).
+  sanitized = sanitized.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-  // Ensure name is not empty
-  if (!sanitized) {
+  // Collapse runs of underscores produced by the conversion.
+  sanitized = sanitized.replace(/_{2,}/g, '_');
+
+  // If after sanitization we have nothing meaningful (no alphanumerics), the
+  // input was all-special-chars — fall back to a safe placeholder rather
+  // than returning a lone `_`.
+  if (!sanitized || !/[a-zA-Z0-9]/.test(sanitized)) {
     sanitized = 'unnamed';
   }
 
@@ -113,24 +125,25 @@ export function sanitizeName(name: string): string {
 }
 
 /**
- * Validate name
+ * Validate name.
+ *
+ * Validates the *raw* input — sanitization is a separate concern. Length
+ * limits and pattern rejections must apply to what the user actually typed,
+ * not the silently-truncated/normalised form.
  */
 export function validateName(name: string): { valid: boolean; error?: string } {
   if (!name || name.trim() === '') {
     return { valid: false, error: 'Name cannot be empty' };
   }
 
-  const sanitizedName = sanitizeName(name);
+  const trimmed = name.trim();
 
-  if (sanitizedName.length === 0) {
-    return { valid: false, error: 'Name cannot be empty' };
-  }
-
-  if (sanitizedName.length > 100) {
+  if (trimmed.length > 100) {
     return { valid: false, error: 'Name cannot exceed 100 characters' };
   }
 
-  // Check for invalid patterns
+  // Pattern rejections run against the raw input so `'.hidden'` is caught
+  // before sanitizeName would strip the dot.
   const invalidPatterns = [
     /^(con|prn|aux|nul|com[0-9])(.+)$/i, // Reserved Windows names
     /^\./, // Starts with dot
@@ -138,7 +151,7 @@ export function validateName(name: string): { valid: boolean; error?: string } {
   ];
 
   for (const pattern of invalidPatterns) {
-    if (pattern.test(sanitizedName)) {
+    if (pattern.test(trimmed)) {
       return { valid: false, error: 'Name contains invalid characters or patterns' };
     }
   }
@@ -179,22 +192,30 @@ export function extractBaseName(name: string): string {
 }
 
 /**
- * Generate a suggested name based on existing names
+ * Generate a suggested name based on existing names.
+ *
+ * Conflict-resolution on `baseName` takes precedence over the description-
+ * derived name. If `baseName` is already in the library, fall back to
+ * `generateUniqueName(baseName, existingNames)` regardless of description.
+ * Only when there's no conflict do we use the description, if one was given.
  */
 export function generateSuggestedName(
   baseName: string,
   existingNames: string[],
   description?: string
 ): string {
-  // Try to generate a descriptive name from description
-  let suggestedName = description ? generateDescriptiveName(description) : baseName;
-
-  // Check for conflicts and add number if needed
-  if (hasNameConflict(suggestedName, existingNames)) {
-    suggestedName = generateUniqueName(suggestedName, existingNames);
+  if (hasNameConflict(baseName, existingNames)) {
+    return generateUniqueName(baseName, existingNames);
   }
 
-  return suggestedName;
+  if (description) {
+    const descriptive = generateDescriptiveName(description);
+    return hasNameConflict(descriptive, existingNames)
+      ? generateUniqueName(descriptive, existingNames)
+      : descriptive;
+  }
+
+  return baseName;
 }
 
 /**
@@ -230,23 +251,28 @@ export function formatNameForDisplay(name: string): string {
 }
 
 /**
- * Generate a timestamped name
+ * Generate an 8-digit YYYYMMDD timestamp suffix.
  */
-export function generateTimestampedName(baseName: string): string {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const shortTimestamp = timestamp.substring(0, 8);
-
-  return `${baseName}_${shortTimestamp}`;
+function ymdStamp(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}`;
 }
 
 /**
- * Create a backup name
+ * Generate a timestamped name (e.g. `animation_20260509`).
+ */
+export function generateTimestampedName(baseName: string): string {
+  return `${baseName}_${ymdStamp()}`;
+}
+
+/**
+ * Create a backup name (e.g. `animation_backup_20260509`).
  */
 export function createBackupName(originalName: string): string {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const shortTimestamp = timestamp.substring(0, 8);
-
-  return `${originalName}_backup_${shortTimestamp}`;
+  return `${originalName}_backup_${ymdStamp()}`;
 }
 
 /**

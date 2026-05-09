@@ -67,8 +67,10 @@ describe('AnimationService', () => {
 
       const result = await service.listAnimations()
 
-      // Test that the method returns an array
-      expect(Array.isArray(result)).toBe(true)
+      // listAnimations returns a DatabaseOperationResult wrapper; the array
+      // lives on `.data`. Empty DB → `result.data` is an empty array, not
+      // undefined, so the assertion holds without conditional fallbacks.
+      expect(Array.isArray(result.data)).toBe(true)
     })
   })
 

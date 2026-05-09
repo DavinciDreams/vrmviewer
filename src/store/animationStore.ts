@@ -79,10 +79,12 @@ export const useAnimationStore = create<AnimationStoreState & AnimationStoreActi
       blendShapeManager: null,
       idleAnimationController: null,
 
-      // Actions
+      // Actions — successful state transitions implicitly clear any prior
+      // error (consistent with vrmStore semantics).
       setAnimation: (animation) =>
         set({
           currentAnimation: animation,
+          error: null,
         }),
 
       setAnimations: (animations) =>
@@ -113,6 +115,8 @@ export const useAnimationStore = create<AnimationStoreState & AnimationStoreActi
       clearAnimation: () =>
         set({
           currentAnimation: null,
+          metadata: null,
+          error: null,
         }),
 
       // Manager actions

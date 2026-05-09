@@ -229,26 +229,47 @@ export function useDAMIntegration(): DAMIntegrationResult {
   }, []);
 
   /**
-   * Apply background colour to the renderer's clear colour. Accepts either a
-   * CSS hex string ("#1a1a2e") or a comma-separated 0-255 RGB triple
-   * ("26,26,46"). Silently ignores values that don't parse.
+   * Apply background colour to the renderer's clear colour. Accepts:
+   *   - a CSS hex string with or without leading `#` ("#1a1a2e", "1a1a2e")
+   *   - a comma-separated 0-255 RGB triple ("26,26,46")
+   *   - one of an explicit allow-list of CSS named colours (kept short on
+   *     purpose; THREE.Color silently renders black for unrecognised names,
+   *     and we don't want random URL strings to clobber the scene).
+   * Other values are rejected with a console.warn rather than silently
+   * producing a black background.
    */
   const applyBackgroundConfig = useCallback((bg?: string) => {
     if (!bg || !cameraManager) return;
+
+    const ALLOWED_NAMED_COLORS = new Set([
+      'black', 'white', 'gray', 'grey', 'silver',
+      'red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink',
+      'cyan', 'magenta', 'transparent',
+    ]);
+    const HEX_PATTERN = /^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
+    const RGB_PATTERN = /^\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*$/;
+
     try {
       const renderer = cameraManager.getRenderer();
       let color: THREE.Color | null = null;
-      if (bg.startsWith('#')) {
-        color = new THREE.Color(bg);
-      } else if (bg.includes(',')) {
-        const [r, g, b] = bg.split(',').map(Number);
-        if ([r, g, b].every((v) => Number.isFinite(v) && v >= 0 && v <= 255)) {
+
+      const rgbMatch = bg.match(RGB_PATTERN);
+      if (rgbMatch) {
+        const r = Number(rgbMatch[1]);
+        const g = Number(rgbMatch[2]);
+        const b = Number(rgbMatch[3]);
+        if ([r, g, b].every((v) => v >= 0 && v <= 255)) {
           color = new THREE.Color(r / 255, g / 255, b / 255);
         }
+      } else if (HEX_PATTERN.test(bg)) {
+        color = new THREE.Color(bg.startsWith('#') ? bg : `#${bg}`);
+      } else if (ALLOWED_NAMED_COLORS.has(bg.toLowerCase())) {
+        color = new THREE.Color(bg.toLowerCase());
       } else {
-        // Named CSS colour or 6-char hex without the leading #.
-        color = new THREE.Color(bg);
+        console.warn(`[DAM] background "${bg}" is not a recognised hex / rgb / named colour — ignoring`);
+        return;
       }
+
       if (color) {
         renderer.setClearColor(color, 1);
       }
