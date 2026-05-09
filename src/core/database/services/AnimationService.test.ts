@@ -36,6 +36,7 @@ describe('AnimationService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         size: 0,
+        order: 0,
       }
  
       await service.saveAnimation(_mockAnimation)

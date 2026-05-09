@@ -5,6 +5,7 @@ import { Input } from '../ui/Input';
 import { AnimationEditor } from './AnimationEditor';
 import { useDatabase } from '../../hooks/useDatabase';
 import { getThumbnailService } from '../../core/database/services/ThumbnailService';
+import { AnimationRecord } from '../../types/database.types';
 
 export interface AnimationData {
   id: string;
@@ -53,7 +54,7 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
       
       if (records) {
         // Transform AnimationRecord to AnimationData
-        const transformedData: AnimationData[] = records.map((record) => ({
+        const transformedData: AnimationData[] = records.map((record: AnimationRecord) => ({
           id: record.uuid,
           name: record.name,
           description: record.description,
