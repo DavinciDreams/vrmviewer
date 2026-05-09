@@ -58,9 +58,13 @@ export function useExport() {
   };
 
   /**
-   * Export model as VRM
+   * Export model as VRM.
+   * Accepts an optional `overrides` object to thread per-export VRM
+   * metadata (license, allowed-user, contact info, etc.) and the
+   * VRMExporter's optimization flags (removeUnnecessaryVertices,
+   * combineSkeletons, combineMorphs) through from the dialog.
    */
-  const exportVRM = async (model: THREE.Group) => {
+  const exportVRM = async (model: THREE.Group, overrides?: Record<string, unknown>) => {
     setIsExporting(true);
     setExportProgress({
       stage: 'INITIALIZING',
@@ -70,14 +74,15 @@ export function useExport() {
       totalSteps: 5,
     });
 
+    const overrideMetadata = (overrides?.metadata ?? {}) as Record<string, unknown>;
     const fullOptions = {
       ...exportOptions,
+      ...overrides,
       format: 'vrm' as const,
       version: '0.0' as const,
       metadata: {
-        title: 'Untitled',
-        version: '1.0',
-        author: '',
+        ...exportOptions.metadata,
+        ...overrideMetadata,
       },
     };
 
