@@ -23,6 +23,7 @@ import { generateDescriptiveName, generateUniqueName } from './utils/namingUtils
 import { bvhLoader } from './core/three/loaders/BVHLoader';
 import { vrmaLoader } from './core/three/loaders/VRMALoader';
 import { cameraManager } from './core/three/scene/CameraManager';
+import { VRMHelper } from './core/three/vrm/VRMHelper';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
 import { parseDataUrl } from './utils/thumbnailUtils';
 import type { AnimationRecord, ModelRecord } from './types/database.types';
@@ -53,7 +54,7 @@ function App() {
   // Blend Shapes
   const { clearExpression } = useBlendShapes();
   // Export
-  const { exportVRM, exportVRMA } = useExport();
+  const { exportVRM, exportVRMA, exportGLTF } = useExport();
   // Database
   const { isInitialized, animations, models } = useDatabase();
   // DAM Integration
@@ -462,20 +463,30 @@ function App() {
           },
           quality: options.quality,
         });
- 
+
         if (!result.success) {
           console.error('VRMA export failed:', result.error);
           return;
         }
- 
+
         console.log('VRMA export successful:', result.data);
+      } else if (options.format === 'glb') {
+        // Export GLB via the universal exporter (was previously a silent no-op)
+        const result = await exportGLTF(currentModel.scene, 'glb');
+        if (!result.success) {
+          console.error('GLB export failed:', result.error);
+          return;
+        }
+        console.log('GLB export successful:', result.data);
+      } else {
+        console.warn('Unsupported export format:', options.format);
       }
-      
+
       setIsExportDialogOpen(false);
     } catch (err) {
       console.error('Export failed:', err);
     }
-  }, [currentModel, currentAnimation, exportVRM, exportVRMA]);
+  }, [currentModel, currentAnimation, exportVRM, exportVRMA, exportGLTF]);
   
   /**
    * Handle thumbnail capture (manual re-capture)
@@ -566,12 +577,15 @@ function App() {
   
   /**
    * Handle reset pose
+   * Resets bone transforms to bind pose AND clears any blend-shape expression.
+   * Previously this only cleared blend shapes, leaving the user's pose unchanged.
    */
   const handleResetPose = useCallback(() => {
-    if (currentModel) {
-      // Reset all blend shapes
-      clearExpression();
+    if (!currentModel) return;
+    if (currentModel.vrm) {
+      VRMHelper.resetAllBonePoses(currentModel.vrm);
     }
+    clearExpression();
   }, [currentModel, clearExpression]);
   
   /**

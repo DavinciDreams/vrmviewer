@@ -7,6 +7,7 @@ import { useState } from 'react';
 import * as THREE from 'three';
 import { getVRMExporter } from '../core/three/export/VRMExporter';
 import { getVRMAExporter } from '../core/three/export/VRMAExporter';
+import { getGLTFExporterEnhanced } from '../core/three/export/GLTFExporterEnhanced';
 import {
   ExportResult,
   ExportProgress,
@@ -40,6 +41,7 @@ export function useExport() {
 
   const vrmExporter = getVRMExporter();
   const vrmaExporter = getVRMAExporter();
+  const gltfExporter = getGLTFExporterEnhanced();
 
   /**
    * Download file helper
@@ -125,6 +127,40 @@ export function useExport() {
   };
 
   /**
+   * Export model as GLB or GLTF (the universal 3D formats).
+   * Uses GLTFExporterEnhanced which supports the optimizeMesh / mergeMeshes /
+   * removeUnusedBones flags from ExportOptions.
+   */
+  const exportGLTF = async (model: THREE.Group, format: 'glb' | 'gltf' = 'glb') => {
+    setIsExporting(true);
+    setExportProgress({
+      stage: 'INITIALIZING',
+      progress: 10,
+      message: `Initializing ${format.toUpperCase()} export...`,
+      currentStep: 1,
+      totalSteps: 3,
+    });
+
+    const fullOptions = {
+      ...exportOptions,
+      format,
+      binary: format === 'glb',
+    };
+
+    const result = await gltfExporter.exportGLTF(model, fullOptions, (progress) => {
+      setExportProgress(progress);
+    });
+
+    setExportProgress(null);
+    setIsExporting(false);
+    setExportResult(result);
+    if (result.success && result.data) {
+      downloadFile(result.data.blob, result.data.filename);
+    }
+    return result;
+  };
+
+  /**
    * Cancel export
    */
   const cancelExport = () => {
@@ -166,6 +202,7 @@ export function useExport() {
     exportOptions,
     exportVRM,
     exportVRMA,
+    exportGLTF,
     cancelExport,
     resetExport,
     updateExportOptions,
