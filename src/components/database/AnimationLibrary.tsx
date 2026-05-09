@@ -17,7 +17,9 @@ export interface AnimationData {
 
 export interface AnimationLibraryProps {
   onPlay: (id: string) => void;
-  onDelete: (id: string) => void;
+  // The parent's actual handler is async (DB delete + side effects); typing
+  // it that way lets `handleCardDelete` await the deletion before refreshing.
+  onDelete: (id: string) => void | Promise<void>;
   onUpdate: (id: string, name: string, description: string) => void;
 }
 
@@ -42,6 +44,9 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
     | { kind: 'clearAll'; count: number }
     | null
   >(null);
+  // Latch while a destructive operation is in flight so a double-click on the
+  // confirm button doesn't fire two concurrent calls.
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchAnimations = useCallback(async () => {
     if (!isInitialized) return;
@@ -107,39 +112,54 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
   const clearSelection = () => setSelectedIds(new Set());
 
   const performBulkDelete = async () => {
+    if (isDeleting) return;
     const ids = Array.from(selectedIds);
+    setIsDeleting(true);
     setConfirmDialog(null);
-    if (ids.length === 0) return;
-    const result = await animations.bulkDelete(ids);
-    if (result.success) {
-      setStatusMessage({ type: 'success', text: `Deleted ${ids.length} animation${ids.length === 1 ? '' : 's'}` });
-      setSelectedIds(new Set());
-      setSelectMode(false);
-      await fetchAnimations();
-    } else {
-      const errorMessage = typeof result.error === 'string'
-        ? result.error
-        : result.error?.message || 'Bulk delete failed';
-      setStatusMessage({ type: 'error', text: errorMessage });
+    if (ids.length === 0) {
+      setIsDeleting(false);
+      return;
     }
-    setTimeout(() => setStatusMessage(null), 4000);
+    try {
+      const result = await animations.bulkDelete(ids);
+      if (result.success) {
+        setStatusMessage({ type: 'success', text: `Deleted ${ids.length} animation${ids.length === 1 ? '' : 's'}` });
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        await fetchAnimations();
+      } else {
+        const errorMessage = typeof result.error === 'string'
+          ? result.error
+          : result.error?.message || 'Bulk delete failed';
+        setStatusMessage({ type: 'error', text: errorMessage });
+      }
+    } finally {
+      setIsDeleting(false);
+      setTimeout(() => setStatusMessage(null), 4000);
+    }
   };
 
   const performClearAll = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
     setConfirmDialog(null);
-    const result = await animations.clearAll();
-    if (result.success) {
-      setStatusMessage({ type: 'success', text: 'All animations cleared' });
-      setSelectedIds(new Set());
-      setSelectMode(false);
-      await fetchAnimations();
-    } else {
-      const errorMessage = typeof result.error === 'string'
-        ? result.error
-        : result.error?.message || 'Clear all failed';
-      setStatusMessage({ type: 'error', text: errorMessage });
+    try {
+      const result = await animations.clearAll();
+      if (result.success) {
+        setStatusMessage({ type: 'success', text: 'All animations cleared' });
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        await fetchAnimations();
+      } else {
+        const errorMessage = typeof result.error === 'string'
+          ? result.error
+          : result.error?.message || 'Clear all failed';
+        setStatusMessage({ type: 'error', text: errorMessage });
+      }
+    } finally {
+      setIsDeleting(false);
+      setTimeout(() => setStatusMessage(null), 4000);
     }
-    setTimeout(() => setStatusMessage(null), 4000);
   };
 
   const handleEdit = (id: string) => {
@@ -152,6 +172,14 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
   const handleSave = (id: string, name: string, description: string) => {
     onUpdate(id, name, description);
     setEditingAnimation(undefined);
+  };
+
+  // Wrap the parent-supplied `onDelete` so that the visible list is refreshed
+  // after a delete from an individual card. Without this the deleted animation
+  // stays in the grid until the user re-opens the panel.
+  const handleCardDelete = async (id: string) => {
+    await onDelete(id);
+    await fetchAnimations();
   };
 
   return (
@@ -286,7 +314,7 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
                 <AnimationCard
                   animation={animation}
                   onPlay={selectMode ? () => toggleSelected(animation.id) : onPlay}
-                  onDelete={onDelete}
+                  onDelete={handleCardDelete}
                   onEdit={handleEdit}
                 />
               </div>

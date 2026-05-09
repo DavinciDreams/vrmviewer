@@ -59,11 +59,23 @@ export const PosePanel: React.FC<PosePanelProps> = ({ vrm, disabled = false }) =
   // Re-read bone state when the selected bone or VRM identity changes — using
   // the React-docs adjust-state-during-render pattern so we don't trip the
   // setState-in-effect lint rule.
-  const [lastKey, setLastKey] = useState<string>(`${vrm ? 'has' : 'none'}::${selectedBone}`);
-  const currentKey = `${vrm ? 'has' : 'none'}::${selectedBone}`;
+  // The vrm half of the key uses a stable identity (not just truthiness) so
+  // that swapping models invalidates `selectedBone` too — otherwise the
+  // dropdown would stay pointing at a bone name from the previous model.
+  const vrmKey = vrm ? (vrm as unknown as { uuid?: string }).uuid ?? 'has' : 'none';
+  const currentKey = `${vrmKey}::${selectedBone}`;
+  const [lastKey, setLastKey] = useState<string>(currentKey);
   if (lastKey !== currentKey) {
     setLastKey(currentKey);
-    setState(readBoneState(vrm, selectedBone));
+    // If the VRM identity changed and the previously-selected bone no longer
+    // exists on the new model, snap to the first available bone.
+    if (selectedBone && !availableBones.includes(selectedBone as VRMHumanoidBoneName)) {
+      const next = hasBones ? availableBones[0] : '';
+      setSelectedBone(next);
+      setState(readBoneState(vrm, next));
+    } else {
+      setState(readBoneState(vrm, selectedBone));
+    }
   }
 
   const applyState = (next: BoneState) => {

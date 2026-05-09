@@ -151,9 +151,17 @@ function App() {
             const file = new File([rec.data], `${rec.name}.${rec.format}`, {
               type: rec.format === 'vrm' ? 'application/octet-stream' : 'model/gltf-binary',
             });
-            await loadModelFromFile(file);
+            const loaded = await loadModelFromFile(file);
             if (cancelled) return;
-            setCurrentModelUuid(rec.uuid);
+            // Only pin the UUID if the load actually produced a model — a
+            // corrupt ArrayBuffer here would otherwise leave the app
+            // pointing at a UUID with no live model in the viewer, breaking
+            // subsequent thumbnail-capture flows.
+            if (loaded) {
+              setCurrentModelUuid(rec.uuid);
+            } else {
+              console.warn('[resume] last model loaded as empty — skipping UUID pin');
+            }
           }
         }
       } catch (err) {
@@ -420,11 +428,13 @@ function App() {
         .setPreference('lastModelUuid', modelUuid)
         .catch((err) => console.warn('[resume] lastModelUuid save failed:', err));
 
-      // Capture and save thumbnail if not already captured
+      // Capture and save thumbnail. Either the manual capture
+      // (`unsavedThumbnailData`) or the viewer-driven auto-capture is fine —
+      // both are already data-URLs at this point.
       const thumbnailToSave = unsavedThumbnailData || autoCapturedThumbnail;
-      if (thumbnailToSave && vrmViewerRef.current) {
+      if (thumbnailToSave) {
         const { format, data } = parseDataUrl(thumbnailToSave);
-        
+
         const thumbnailResult = await thumbnailService.saveThumbnail({
           uuid: crypto.randomUUID(),
           name: `${modelUuid}_thumbnail`,
@@ -437,30 +447,7 @@ function App() {
           size: data.length,
           createdAt: new Date(),
         });
-        
-        if (thumbnailResult.success && thumbnailResult.data) {
-          await models.update(modelUuid, {
-            thumbnail: thumbnailResult.data.uuid,
-          });
-          console.log('Thumbnail saved:', thumbnailResult.data.uuid);
-        }
-      } else if (unsavedThumbnailData) {
-        // Use pre-captured thumbnail
-        const { format, data } = parseDataUrl(unsavedThumbnailData);
-        
-        const thumbnailResult = await thumbnailService.saveThumbnail({
-          uuid: crypto.randomUUID(),
-          name: `${modelUuid}_thumbnail`,
-          type: 'model',
-          targetUuid: modelUuid,
-          data,
-          format,
-          width: 256,
-          height: 256,
-          size: data.length,
-          createdAt: new Date(),
-        });
-        
+
         if (thumbnailResult.success && thumbnailResult.data) {
           await models.update(modelUuid, {
             thumbnail: thumbnailResult.data.uuid,
