@@ -10,6 +10,7 @@ import { useVRM } from './useVRM';
 import { usePlayback } from './usePlayback';
 import { useAnimation } from './useAnimation';
 import { cameraManager } from '../core/three/scene/CameraManager';
+import { lightingManager } from '../core/three/scene/LightingManager';
 
 /**
  * DAM configuration from URL query parameters
@@ -227,6 +228,63 @@ export function useDAMIntegration(): DAMIntegrationResult {
   }, []);
 
   /**
+   * Apply background colour to the renderer's clear colour. Accepts either a
+   * CSS hex string ("#1a1a2e") or a comma-separated 0-255 RGB triple
+   * ("26,26,46"). Silently ignores values that don't parse.
+   */
+  const applyBackgroundConfig = useCallback((bg?: string) => {
+    if (!bg || !cameraManager) return;
+    try {
+      const renderer = cameraManager.getRenderer();
+      let color: THREE.Color | null = null;
+      if (bg.startsWith('#')) {
+        color = new THREE.Color(bg);
+      } else if (bg.includes(',')) {
+        const [r, g, b] = bg.split(',').map(Number);
+        if ([r, g, b].every((v) => Number.isFinite(v) && v >= 0 && v <= 255)) {
+          color = new THREE.Color(r / 255, g / 255, b / 255);
+        }
+      } else {
+        // Named CSS colour or 6-char hex without the leading #.
+        color = new THREE.Color(bg);
+      }
+      if (color) {
+        renderer.setClearColor(color, 1);
+      }
+    } catch (error) {
+      console.warn('Failed to apply background configuration:', error);
+    }
+  }, []);
+
+  /**
+   * Apply a lighting preset to the LightingManager. Presets are matched
+   * loosely so callers can pass "studio", "soft-studio", etc. Falls back to
+   * the manager's existing values if the preset name is unrecognised.
+   */
+  const applyLightingConfig = useCallback((preset?: string) => {
+    if (!preset || !lightingManager) return;
+    const key = preset.toLowerCase();
+    try {
+      // (ambient, directional) intensities per preset.
+      const presets: Record<string, [number, number]> = {
+        soft: [0.7, 0.6],
+        studio: [0.5, 1.5],
+        dim: [0.2, 0.4],
+        bright: [1.0, 1.5],
+        flat: [1.2, 0.2],
+        default: [0.6, 0.8],
+      };
+      const match = presets[key];
+      if (!match) return;
+      const [ambient, directional] = match;
+      lightingManager.setAmbientIntensity(ambient);
+      lightingManager.setDirectionalIntensity(directional);
+    } catch (error) {
+      console.warn('Failed to apply lighting configuration:', error);
+    }
+  }, []);
+
+  /**
    * Apply playback configuration
    */
   const applyPlaybackConfig = useCallback((damConfig: DAMConfig) => {
@@ -278,6 +336,10 @@ export function useDAMIntegration(): DAMIntegrationResult {
         await loadAnimationFromURL(damConfig.animation);
       }
 
+      // Apply scene configuration (background colour, lighting preset).
+      applyBackgroundConfig(damConfig.background);
+      applyLightingConfig(damConfig.lighting);
+
       // Apply camera configuration
       applyCameraConfig(damConfig.camera);
 
@@ -295,7 +357,7 @@ export function useDAMIntegration(): DAMIntegrationResult {
         error: error instanceof Error ? error.message : 'Failed to load from DAM configuration',
       }));
     }
-  }, [loadModelFromURL, loadAnimationFromURL, applyCameraConfig, applyPlaybackConfig, clearCurrentModel]);
+  }, [loadModelFromURL, loadAnimationFromURL, applyCameraConfig, applyBackgroundConfig, applyLightingConfig, applyPlaybackConfig, clearCurrentModel]);
 
   /**
    * Clear DAM state

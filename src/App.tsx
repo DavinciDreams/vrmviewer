@@ -158,6 +158,56 @@ function App() {
         console.warn('[resume] failed to restore last model:', err);
       }
 
+      // Restore last animation that was playing.
+      try {
+        const animUuidResult = await prefs.getPreference<string>('lastAnimationUuid');
+        if (cancelled) return;
+        if (animUuidResult.success && animUuidResult.data) {
+          const animResult = await animations.getByUuid(animUuidResult.data);
+          if (cancelled) return;
+          if (animResult.success && animResult.data) {
+            const animRec = animResult.data;
+            const animFile = new File([animRec.data], `${animRec.name}.${animRec.format}`, {
+              type: animRec.format === 'bvh' ? 'text/plain' : 'application/octet-stream',
+            });
+            await loadAnimationFromFile(animFile);
+            if (cancelled) return;
+            playAnimation();
+            play();
+          }
+        }
+      } catch (err) {
+        console.warn('[resume] failed to restore last animation:', err);
+      }
+
+      // Restore wireframe/visibility toggles. VRMViewer's imperative handle
+      // appears once the canvas mounts, so poll like we do for cameraManager.
+      try {
+        const visualResult = await prefs.getPreference<{ wireframe: boolean; visible: boolean }>('viewerToggles');
+        if (cancelled) return;
+        if (visualResult.success && visualResult.data) {
+          const target = visualResult.data;
+          const apply = () => {
+            const handle = vrmViewerRef.current;
+            if (!handle) return false;
+            if (target.wireframe !== handle.isWireframe()) handle.toggleWireframe();
+            if (target.visible !== handle.isVisible()) handle.toggleVisibility();
+            setIsModelWireframe(handle.isWireframe());
+            setIsModelVisible(handle.isVisible());
+            return true;
+          };
+          if (!apply()) {
+            for (let i = 0; i < 20; i++) {
+              await new Promise((r) => setTimeout(r, 100));
+              if (cancelled) return;
+              if (apply()) break;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[resume] failed to restore viewer toggles:', err);
+      }
+
       // Camera restore — wait briefly for VRMViewer to initialise cameraManager.
       try {
         const cameraResult = await prefs.getPreference<{
@@ -495,6 +545,11 @@ function App() {
       await loadAnimationFromFile(file);
       playAnimation();
       play();
+
+      // Remember this as the last animation so the next session resumes here.
+      getPreferencesService()
+        .setPreference('lastAnimationUuid', animationId)
+        .catch((err) => console.warn('[resume] lastAnimationUuid save failed:', err));
     }
   }, [animations, loadAnimationFromFile, playAnimation, play]);
   
@@ -502,6 +557,13 @@ function App() {
    * Handle animation delete from library
    */
   const handleAnimationDelete = useCallback(async (animationId: string) => {
+    // If we're deleting the animation pinned for resume, drop the pin first.
+    const lastResult = await getPreferencesService()
+      .getPreference<string>('lastAnimationUuid')
+      .catch(() => null);
+    if (lastResult?.success && lastResult.data === animationId) {
+      getPreferencesService().deletePreference('lastAnimationUuid').catch(() => {});
+    }
     const result = await animations.delete(animationId);
     if (result.success) {
       console.log('Animation deleted:', animationId);
@@ -787,17 +849,27 @@ function App() {
   const handleVisibilityToggle = useCallback(() => {
     if (vrmViewerRef.current) {
       vrmViewerRef.current.toggleVisibility();
-      setIsModelVisible(vrmViewerRef.current.isVisible());
+      const visible = vrmViewerRef.current.isVisible();
+      const wireframe = vrmViewerRef.current.isWireframe();
+      setIsModelVisible(visible);
+      getPreferencesService()
+        .setPreference('viewerToggles', { wireframe, visible })
+        .catch((err) => console.warn('[resume] viewerToggles save failed:', err));
     }
   }, []);
-  
+
   /**
    * Handle wireframe toggle
    */
   const handleWireframeToggle = useCallback(() => {
     if (vrmViewerRef.current) {
       vrmViewerRef.current.toggleWireframe();
-      setIsModelWireframe(vrmViewerRef.current.isWireframe());
+      const wireframe = vrmViewerRef.current.isWireframe();
+      const visible = vrmViewerRef.current.isVisible();
+      setIsModelWireframe(wireframe);
+      getPreferencesService()
+        .setPreference('viewerToggles', { wireframe, visible })
+        .catch((err) => console.warn('[resume] viewerToggles save failed:', err));
     }
   }, []);
   
