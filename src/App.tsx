@@ -7,6 +7,7 @@ import { FilePreview } from './components/dragdrop/FilePreview';
 import { AnimationControls } from './components/controls/AnimationControls';
 import { PlaybackControls } from './components/controls/PlaybackControls';
 import { ModelControls } from './components/controls/ModelControls';
+import { CameraControls } from './components/controls/CameraControls';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
 import { Button } from './components/ui/Button';
@@ -25,7 +26,9 @@ import { vrmaLoader } from './core/three/loaders/VRMALoader';
 import { cameraManager } from './core/three/scene/CameraManager';
 import { VRMHelper } from './core/three/vrm/VRMHelper';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
+import { getPreferencesService } from './core/database/services/PreferencesService';
 import { parseDataUrl } from './utils/thumbnailUtils';
+import * as THREE from 'three';
 import type { AnimationRecord, ModelRecord } from './types/database.types';
 
 /**
@@ -75,6 +78,9 @@ function App() {
   
   // Track current model UUID for thumbnail generation
   const [currentModelUuid, setCurrentModelUuid] = useState<string | null>(null);
+
+  // Camera controls panel collapsed by default (it's a tertiary control)
+  const [isCameraPanelOpen, setIsCameraPanelOpen] = useState(false);
   
   // Track thumbnail capture state for visual feedback
   const [isCapturing, setIsCapturing] = useState(false);
@@ -107,6 +113,144 @@ function App() {
       stopIdleAnimation();
     }
   }, [currentModel, currentAnimation, startIdleAnimation, stopIdleAnimation]);
+
+  /**
+   * Auto-restore the last loaded model + camera state on app startup.
+   *
+   * Run once after the database initializes. Pulls the saved 'lastModelUuid'
+   * preference and re-opens that model into the viewer so the user picks up
+   * exactly where they left off, then applies the saved camera position/target
+   * once `cameraManager` is available (it's created lazily by VRMViewer when
+   * the canvas first mounts, hence the polling).
+   */
+  useEffect(() => {
+    if (!isInitialized) return;
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      const prefs = getPreferencesService();
+
+      try {
+        const modelUuidResult = await prefs.getPreference<string>('lastModelUuid');
+        if (cancelled) return;
+        if (modelUuidResult.success && modelUuidResult.data) {
+          const modelResult = await models.getByUuid(modelUuidResult.data);
+          if (cancelled) return;
+          if (hasSuccessAndData<ModelRecord>(modelResult)) {
+            const rec = modelResult.data;
+            const file = new File([rec.data], `${rec.name}.${rec.format}`, {
+              type: rec.format === 'vrm' ? 'application/octet-stream' : 'model/gltf-binary',
+            });
+            await loadModelFromFile(file);
+            if (cancelled) return;
+            setCurrentModelUuid(rec.uuid);
+          }
+        }
+      } catch (err) {
+        console.warn('[resume] failed to restore last model:', err);
+      }
+
+      // Camera restore — wait briefly for VRMViewer to initialise cameraManager.
+      try {
+        const cameraResult = await prefs.getPreference<{
+          position: { x: number; y: number; z: number };
+          target: { x: number; y: number; z: number };
+        }>('camera');
+        if (cancelled) return;
+        if (cameraResult.success && cameraResult.data) {
+          const apply = () => {
+            if (!cameraManager) return false;
+            cameraManager.setCameraPosition(
+              new THREE.Vector3(
+                cameraResult.data!.position.x,
+                cameraResult.data!.position.y,
+                cameraResult.data!.position.z
+              )
+            );
+            cameraManager.setCameraTarget(
+              new THREE.Vector3(
+                cameraResult.data!.target.x,
+                cameraResult.data!.target.y,
+                cameraResult.data!.target.z
+              )
+            );
+            return true;
+          };
+          if (!apply()) {
+            // Poll up to ~2s for the canvas-driven cameraManager init
+            for (let i = 0; i < 20; i++) {
+              await new Promise((r) => setTimeout(r, 100));
+              if (cancelled) return;
+              if (apply()) break;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[resume] failed to restore camera:', err);
+      }
+    };
+
+    restoreSession();
+    return () => {
+      cancelled = true;
+    };
+    // Run once when DB is ready; re-running would re-load the model on every
+    // re-render which is not what we want.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInitialized]);
+
+  /**
+   * Persist camera position/target to preferences on user interaction.
+   * Throttled to one save per 500ms so dragging the orbit controls doesn't
+   * hammer IndexedDB.
+   */
+  useEffect(() => {
+    if (!isInitialized) return;
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    let attached = false;
+    let controls: ReturnType<NonNullable<typeof cameraManager>['getControls']> | null = null;
+
+    const handleControlsChange = () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        if (!cameraManager) return;
+        const cam = cameraManager.getCamera();
+        const ctrls = cameraManager.getControls();
+        const snapshot = {
+          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+          target: { x: ctrls.target.x, y: ctrls.target.y, z: ctrls.target.z },
+          zoom: cam.zoom,
+        };
+        getPreferencesService()
+          .setPreference('camera', snapshot)
+          .catch((err) => console.warn('[resume] camera save failed:', err));
+      }, 500);
+    };
+
+    const tryAttach = () => {
+      if (attached || !cameraManager) return false;
+      controls = cameraManager.getControls();
+      controls.addEventListener('end', handleControlsChange);
+      attached = true;
+      return true;
+    };
+
+    // cameraManager is set up by VRMViewer on canvas mount — poll briefly.
+    let pollHandle: ReturnType<typeof setTimeout> | null = null;
+    const poll = (attemptsLeft: number) => {
+      if (tryAttach() || attemptsLeft <= 0) return;
+      pollHandle = setTimeout(() => poll(attemptsLeft - 1), 100);
+    };
+    poll(20);
+
+    return () => {
+      if (pollHandle) clearTimeout(pollHandle);
+      if (saveTimer) clearTimeout(saveTimer);
+      if (attached && controls) {
+        controls.removeEventListener('end', handleControlsChange);
+      }
+    };
+  }, [isInitialized]);
   
   /**
    * Handle file load
@@ -210,7 +354,12 @@ function App() {
       
       const modelUuid = result.data.uuid;
       setCurrentModelUuid(modelUuid);
-      
+
+      // Remember this as the last loaded model so the next session resumes here.
+      getPreferencesService()
+        .setPreference('lastModelUuid', modelUuid)
+        .catch((err) => console.warn('[resume] lastModelUuid save failed:', err));
+
       // Capture and save thumbnail if not already captured
       const thumbnailToSave = unsavedThumbnailData || autoCapturedThumbnail;
       if (thumbnailToSave && vrmViewerRef.current) {
@@ -381,7 +530,7 @@ function App() {
     
     // Set current model UUID to enable thumbnail re-capture
     setCurrentModelUuid(modelId);
-    
+
     const result = await models.getByUuid(modelId);
     if (hasSuccessAndData<ModelRecord>(result)) {
       const modelRecord = result.data;
@@ -391,6 +540,11 @@ function App() {
       });
       // Load model
       await loadModelFromFile(file);
+
+      // Remember this as the last loaded model for next session.
+      getPreferencesService()
+        .setPreference('lastModelUuid', modelId)
+        .catch((err) => console.warn('[resume] lastModelUuid save failed:', err));
     }
   }, [models, loadModelFromFile]);
   
@@ -401,13 +555,17 @@ function App() {
     const result = await models.delete(modelId);
     if (result.success) {
       console.log('Model deleted:', modelId);
-      
+
       // Clear current model from viewer if deleted model is currently loaded
       if (currentModelUuid === modelId) {
         clearCurrentModel();
         setCurrentModelUuid(null);
+        // Don't keep pointing the resume flow at a model that no longer exists.
+        getPreferencesService()
+          .deletePreference('lastModelUuid')
+          .catch((err) => console.warn('[resume] lastModelUuid clear failed:', err));
       }
-      
+
       return { success: true };
     } else {
       console.error('Failed to delete model:', result.error);
@@ -704,6 +862,37 @@ function App() {
                   onResetPose={handleResetPose}
                   onResetCamera={handleResetCamera}
                 />
+              </div>
+
+              {/* Camera Controls (collapsible, top-right) */}
+              <div className="absolute top-4 right-4 z-10 w-64">
+                <button
+                  onClick={() => setIsCameraPanelOpen((v) => !v)}
+                  className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
+                  aria-expanded={isCameraPanelOpen}
+                  aria-controls="camera-controls-panel"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Camera
+                  </span>
+                  <svg
+                    className={`w-4 h-4 transition-transform ${isCameraPanelOpen ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {isCameraPanelOpen && (
+                  <div id="camera-controls-panel">
+                    <CameraControls />
+                  </div>
+                )}
               </div>
             </>
           )}
