@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import * as THREE from 'three';
 import { loaderManager } from '../core/three/loaders/LoaderManager';
 import { useVRMStore } from '../store/vrmStore';
+import { useAnimationStore } from '../store/animationStore';
 import { vrmLoader } from '../core/three/loaders/VRMLoader';
 import { validateModelFile } from '../utils/fileUtils';
 import { VRMModel } from '../types/vrm.types';
@@ -46,6 +47,9 @@ export function useVRM() {
           version: result.data.metadata.version,
           author: result.data.metadata.author,
         });
+        if (result.data.vrm) {
+          useAnimationStore.getState().initializeManagers(result.data.vrm);
+        }
       } else {
         setError(result.error?.message || 'Failed to load VRM model');
       }
@@ -87,6 +91,9 @@ export function useVRM() {
             version: vrmResult.data.metadata.version,
             author: vrmResult.data.metadata.author,
           });
+          if (vrmResult.data.vrm) {
+            useAnimationStore.getState().initializeManagers(vrmResult.data.vrm);
+          }
         } else {
           setError(vrmResult.error?.message || 'Failed to load VRM model');
         }
@@ -162,6 +169,13 @@ export function useVRM() {
             version: vrmModel.metadata.version,
             author: vrmModel.metadata.author,
           });
+          // Initialize the animation/blend-shape/idle-animation managers
+          // against this VRM. Without this call, VRMViewer's render loop
+          // calls `animationManager?.update()` on a `null` manager and
+          // animations / expressions / idle motion all silently no-op.
+          if (vrmModel.vrm) {
+            useAnimationStore.getState().initializeManagers(vrmModel.vrm);
+          }
           return vrmModel;
         } else {
           setError(vrmResult.error?.message || 'Failed to load VRM model');
@@ -213,6 +227,9 @@ export function useVRM() {
    * Clear current model
    */
   const clearCurrentModel = useCallback(() => {
+    // Tear down the per-model animation managers so the next load gets
+    // fresh ones bound to the new VRM.
+    useAnimationStore.getState().disposeManagers();
     clearStoreModel();
   }, [clearStoreModel]);
 

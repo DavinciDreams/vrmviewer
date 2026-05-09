@@ -22,8 +22,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onModelUpdate,
   onExport,
 }) => {
-  const [activeTab, setActiveTab] = useState<'animations' | 'models' | 'export'>('animations');
-  
+  // Export is an action button, not a tab — clicking it opens the export
+  // dialog without switching the visible content of the sidebar.
+  const [activeTab, setActiveTab] = useState<'animations' | 'models'>('animations');
+
   return (
     <aside className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
       {/* Tabs */}
@@ -49,20 +51,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           Models
         </button>
         <button
-          onClick={() => {
-            setActiveTab('export');
-            onExport?.();
-          }}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'export'
-              ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750'
-              : 'text-gray-400 hover:text-white hover:bg-gray-750'
-          }`}
+          onClick={() => onExport?.()}
+          className="flex-1 px-4 py-3 text-sm font-medium transition-colors text-gray-400 hover:text-white hover:bg-gray-750"
         >
           Export
         </button>
       </div>
-      
+
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'animations' && (
@@ -72,25 +67,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onUpdate={onAnimationUpdate || (() => {})}
           />
         )}
-        
+
         {activeTab === 'models' && (
           <ModelLibrary
             onLoad={onModelLoad || (() => {})}
             onDelete={onModelDelete || (async () => ({ success: true }))}
             onUpdate={onModelUpdate || (() => {})}
           />
-        )}
-        
-        {activeTab === 'export' && (
-          <div className="p-4">
-            <div className="text-center text-gray-400 py-8">
-              <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              <p className="text-sm">Export Options</p>
-              <p className="text-xs mt-1">Configure export settings</p>
-            </div>
-          </div>
         )}
       </div>
       

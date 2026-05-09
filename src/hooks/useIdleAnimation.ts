@@ -1,9 +1,17 @@
 /**
  * useIdleAnimation Hook
- * Custom hook for idle animation control (breathing, blinking)
+ * Custom hook for idle animation control (breathing, blinking).
+ *
+ * Delegates to the `IdleAnimationController` instance owned by
+ * `animationStore`. The controller is initialized inside `useVRM` once a
+ * VRM model loads, and its `update()` method is driven by `VRMViewer`'s
+ * render loop, so toggling start/stop and tweaking breathing/blinking
+ * here actually affects the rendered avatar.
  */
 
 import { useCallback, useState } from 'react';
+import { useAnimationStore } from '../store/animationStore';
+import { IdleAnimationController } from '../core/three/animation/IdleAnimationController';
 
 /**
  * Breathing configuration
@@ -28,15 +36,6 @@ export interface BlinkingConfig {
 }
 
 /**
- * Idle animation state
- */
-export interface IdleAnimationState {
-  breathing: BreathingConfig;
-  blinking: BlinkingConfig;
-  isRunning: boolean;
-}
-
-/**
  * Idle animation hook return type
  */
 export interface IdleAnimationControls {
@@ -58,106 +57,123 @@ export interface IdleAnimationControls {
   toggle: () => void;
 }
 
-/**
- * Default breathing configuration
- */
 const defaultBreathingConfig: BreathingConfig = {
   enabled: true,
-  rate: 12, // 12 breaths per minute (average)
+  rate: 12,
   depth: 0.5,
   chestExpansion: 0.02,
   shoulderMovement: 0.01,
 };
 
-/**
- * Default blinking configuration
- */
 const defaultBlinkingConfig: BlinkingConfig = {
   enabled: true,
-  frequency: 15, // 15 blinks per minute (average)
+  frequency: 15,
   minDuration: 0.1,
   maxDuration: 0.2,
   randomize: true,
 };
 
-/**
- * useIdleAnimation hook
- * Note: This is a placeholder implementation. In a real implementation,
- * you would integrate with IdleAnimationController from animation system.
- */
 export function useIdleAnimation(): IdleAnimationControls {
-  // State
+  const idleController = useAnimationStore((s) => s.idleAnimationController);
+
+  // Mirror controller state for reactivity. Initialized to defaults so the
+  // UI is meaningful before a model is loaded.
   const [breathing, setBreathing] = useState<BreathingConfig>(defaultBreathingConfig);
   const [blinking, setBlinking] = useState<BlinkingConfig>(defaultBlinkingConfig);
-  // Mirror prior auto-start semantics: running by default if any idle feature is enabled.
-  const [isRunning, setIsRunning] = useState<boolean>(
-    defaultBreathingConfig.enabled || defaultBlinkingConfig.enabled,
-  );
+  const [isRunning, setIsRunning] = useState<boolean>(true);
 
-  // Start idle animations
+  // Sync local React state with controller state whenever the controller
+  // identity changes (e.g. a new model is loaded). Tracking the last-seen
+  // controller via useState (not useRef) is the React-docs-recommended
+  // pattern for "adjust state during render" without hitting
+  // setState-in-effect or ref-in-render lint rules.
+  const [lastController, setLastController] = useState<IdleAnimationController | null>(idleController ?? null);
+  if (lastController !== idleController) {
+    setLastController(idleController ?? null);
+    if (idleController && idleController.isInitialized()) {
+      const state = idleController.getState();
+      setBreathing(state.breathing);
+      setBlinking(state.blinking);
+      setIsRunning(state.isRunning);
+    }
+  }
+
   const start = useCallback(() => {
+    idleController?.start();
     setIsRunning(true);
-  }, []);
+  }, [idleController]);
 
-  // Stop idle animations
   const stop = useCallback(() => {
+    idleController?.stop();
     setIsRunning(false);
-  }, []);
+  }, [idleController]);
 
-  // Toggle idle animations
   const toggle = useCallback(() => {
-    setIsRunning((prev) => !prev);
-  }, []);
+    if (isRunning) {
+      idleController?.stop();
+      setIsRunning(false);
+    } else {
+      idleController?.start();
+      setIsRunning(true);
+    }
+  }, [idleController, isRunning]);
 
-  // Set breathing enabled. Auto-starts when turning on, mirroring the prior
-  // useEffect-based sync but moved into the event handler.
   const setBreathingEnabled = useCallback((enabled: boolean) => {
+    idleController?.setBreathingConfig({ enabled });
     setBreathing((prev) => ({ ...prev, enabled }));
-    if (enabled) setIsRunning(true);
-  }, []);
+    if (enabled) {
+      idleController?.start();
+      setIsRunning(true);
+    }
+  }, [idleController]);
 
-  // Set breathing rate
   const setBreathingRate = useCallback((rate: number) => {
-    setBreathing((prev) => ({ ...prev, rate: Math.max(1, Math.min(30, rate)) }));
-  }, []);
+    const clamped = Math.max(1, Math.min(30, rate));
+    idleController?.setBreathingConfig({ rate: clamped });
+    setBreathing((prev) => ({ ...prev, rate: clamped }));
+  }, [idleController]);
 
-  // Set breathing depth
   const setBreathingDepth = useCallback((depth: number) => {
-    setBreathing((prev) => ({ ...prev, depth: Math.max(0, Math.min(1, depth)) }));
-  }, []);
+    const clamped = Math.max(0, Math.min(1, depth));
+    idleController?.setBreathingConfig({ depth: clamped });
+    setBreathing((prev) => ({ ...prev, depth: clamped }));
+  }, [idleController]);
 
-  // Set blinking enabled. Auto-starts when turning on (event-handler form).
   const setBlinkingEnabled = useCallback((enabled: boolean) => {
+    idleController?.setBlinkingConfig({ enabled });
     setBlinking((prev) => ({ ...prev, enabled }));
-    if (enabled) setIsRunning(true);
-  }, []);
+    if (enabled) {
+      idleController?.start();
+      setIsRunning(true);
+    }
+  }, [idleController]);
 
-  // Set blinking frequency
   const setBlinkingFrequency = useCallback((frequency: number) => {
-    setBlinking((prev) => ({ ...prev, frequency: Math.max(1, Math.min(60, frequency)) }));
-  }, []);
+    const clamped = Math.max(1, Math.min(60, frequency));
+    idleController?.setBlinkingConfig({ frequency: clamped });
+    setBlinking((prev) => ({ ...prev, frequency: clamped }));
+  }, [idleController]);
 
-  // Set blinking duration
   const setBlinkingDuration = useCallback((min: number, max: number) => {
+    const clampedMin = Math.max(0.05, min);
+    const clampedMax = Math.max(clampedMin, max);
+    idleController?.setBlinkingConfig({ minDuration: clampedMin, maxDuration: clampedMax });
     setBlinking((prev) => ({
       ...prev,
-      minDuration: Math.max(0.05, min),
-      maxDuration: Math.max(min, max),
+      minDuration: clampedMin,
+      maxDuration: clampedMax,
     }));
-  }, []);
+  }, [idleController]);
 
-  // Set randomize blinking
   const setRandomizeBlinking = useCallback((randomize: boolean) => {
+    idleController?.setBlinkingConfig({ randomize });
     setBlinking((prev) => ({ ...prev, randomize }));
-  }, []);
+  }, [idleController]);
 
   return {
-    // State
     breathing,
     blinking,
     isRunning,
-
-    // Actions
     start,
     stop,
     setBreathingEnabled,
@@ -172,8 +188,7 @@ export function useIdleAnimation(): IdleAnimationControls {
 }
 
 /**
- * useBreathing hook
- * Get and control breathing animation
+ * useBreathing — independent breathing-only state for non-shared UI.
  */
 export function useBreathing(): {
   config: BreathingConfig;
@@ -185,8 +200,6 @@ export function useBreathing(): {
   const setPartialConfig = useCallback((partialConfig: Partial<BreathingConfig>) => {
     setConfig((prev) => {
       const newConfig = { ...prev, ...partialConfig };
-      
-      // Validate and clamp values
       if (newConfig.rate !== undefined) {
         newConfig.rate = Math.max(1, Math.min(30, newConfig.rate));
       }
@@ -199,7 +212,6 @@ export function useBreathing(): {
       if (newConfig.shoulderMovement !== undefined) {
         newConfig.shoulderMovement = Math.max(0, Math.min(1, newConfig.shoulderMovement));
       }
-      
       return newConfig;
     });
   }, []);
@@ -216,8 +228,7 @@ export function useBreathing(): {
 }
 
 /**
- * useBlinking hook
- * Get and control blinking animation
+ * useBlinking — independent blinking-only state for non-shared UI.
  */
 export function useBlinking(): {
   config: BlinkingConfig;
@@ -229,8 +240,6 @@ export function useBlinking(): {
   const setPartialConfig = useCallback((partialConfig: Partial<BlinkingConfig>) => {
     setConfig((prev) => {
       const newConfig = { ...prev, ...partialConfig };
-      
-      // Validate and clamp values
       if (newConfig.frequency !== undefined) {
         newConfig.frequency = Math.max(1, Math.min(60, newConfig.frequency));
       }
@@ -240,7 +249,6 @@ export function useBlinking(): {
       if (newConfig.maxDuration !== undefined) {
         newConfig.maxDuration = Math.max(newConfig.minDuration, newConfig.maxDuration);
       }
-      
       return newConfig;
     });
   }, []);

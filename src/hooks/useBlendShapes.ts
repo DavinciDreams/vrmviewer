@@ -1,10 +1,17 @@
 /**
  * useBlendShapes Hook
- * Custom hook for blend shape management
+ * Custom hook for blend shape management.
+ *
+ * Delegates to the `BlendShapeManager` instance owned by `animationStore`.
+ * That manager is initialized inside `useVRM` once a VRM model loads, and
+ * its `update()` method is driven by `VRMViewer`'s render loop, so all
+ * setter calls here actually mutate the rendered avatar.
  */
 
 import { useCallback, useState } from 'react';
+import { useAnimationStore } from '../store/animationStore';
 import { ExpressionPresetName } from '../constants/blendShapes';
+import { BlendShapeManager } from '../core/three/animation/BlendShapeManager';
 
 const DEFAULT_BLEND_SHAPES = [
   'blink',
@@ -41,77 +48,98 @@ export interface BlendShapeControls {
   hasBlendShape: (name: string) => boolean;
 }
 
-/**
- * useBlendShapes hook
- * Note: This is a placeholder implementation. In a real implementation,
- * you would integrate with the BlendShapeManager from the animation system.
- */
 export function useBlendShapes(): BlendShapeControls {
-  // State — placeholder list until VRM-driven discovery is wired up.
-  const [availableBlendShapes] = useState<string[]>(DEFAULT_BLEND_SHAPES);
+  const blendShapeManager = useAnimationStore((s) => s.blendShapeManager);
+
+  const [availableBlendShapes, setAvailableBlendShapes] = useState<string[]>(DEFAULT_BLEND_SHAPES);
   const [currentBlendShapes, setCurrentBlendShapes] = useState<Record<string, number>>({});
   const [currentExpression, setCurrentExpression] = useState<ExpressionPresetName | null>(null);
   const [expressionWeight, setExpressionWeight] = useState<number>(1);
 
-  // Set blend shape value
-  const setBlendShape = useCallback((name: string, value: number) => {
-    setCurrentBlendShapes((prev) => ({
-      ...prev,
-      [name]: Math.max(0, Math.min(1, value)),
-    }));
-  }, []);
+  // Sync local React state with manager state whenever the manager identity
+  // changes (e.g. a new model is loaded). Tracking the last-seen manager via
+  // useState (not useRef) is the React-docs-recommended pattern for
+  // "adjust state during render" without hitting setState-in-effect or
+  // ref-in-render lint rules.
+  const [lastManager, setLastManager] = useState<BlendShapeManager | null>(blendShapeManager ?? null);
+  if (lastManager !== blendShapeManager) {
+    setLastManager(blendShapeManager ?? null);
+    if (blendShapeManager && blendShapeManager.isInitialized()) {
+      const shapes = blendShapeManager.getAvailableBlendShapes();
+      const nextAvailable = shapes.length > 0 ? shapes : DEFAULT_BLEND_SHAPES;
+      setAvailableBlendShapes(nextAvailable);
+      setCurrentBlendShapes(blendShapeManager.getAllBlendShapes());
+      const expr = blendShapeManager.getExpression();
+      setCurrentExpression(expr ? expr.preset : null);
+      setExpressionWeight(expr ? expr.weight : 1);
+    } else {
+      setAvailableBlendShapes(DEFAULT_BLEND_SHAPES);
+      setCurrentBlendShapes({});
+      setCurrentExpression(null);
+      setExpressionWeight(1);
+    }
+  }
 
-  // Set multiple blend shapes
+  const setBlendShape = useCallback((name: string, value: number) => {
+    const clamped = Math.max(0, Math.min(1, value));
+    blendShapeManager?.setBlendShape(name, clamped);
+    setCurrentBlendShapes((prev) => ({ ...prev, [name]: clamped }));
+  }, [blendShapeManager]);
+
   const setBlendShapes = useCallback((blendShapes: Record<string, number>) => {
     const normalized: Record<string, number> = {};
     Object.entries(blendShapes).forEach(([name, value]) => {
       normalized[name] = Math.max(0, Math.min(1, value));
     });
+    blendShapeManager?.setBlendShapes(normalized);
     setCurrentBlendShapes(normalized);
-  }, []);
+  }, [blendShapeManager]);
 
-  // Set expression preset
   const setExpression = useCallback((preset: ExpressionPresetName, weight: number = 1) => {
+    const clampedWeight = Math.max(0, Math.min(1, weight));
+    if (blendShapeManager) {
+      try {
+        blendShapeManager.setExpression(preset, clampedWeight);
+      } catch (err) {
+        console.warn('[useBlendShapes] setExpression failed:', err);
+        return;
+      }
+      setCurrentBlendShapes(blendShapeManager.getAllBlendShapes());
+    }
     setCurrentExpression(preset);
-    setExpressionWeight(Math.max(0, Math.min(1, weight)));
+    setExpressionWeight(clampedWeight);
+  }, [blendShapeManager]);
 
-    // In a real implementation, this would apply the preset blend shapes
-    // For now, we'll just clear current blend shapes
-    setCurrentBlendShapes({});
-  }, []);
-
-  // Clear expression
   const clearExpression = useCallback(() => {
+    blendShapeManager?.clearExpression();
     setCurrentExpression(null);
     setExpressionWeight(1);
-    setCurrentBlendShapes({});
-  }, []);
+    setCurrentBlendShapes(blendShapeManager ? blendShapeManager.getAllBlendShapes() : {});
+  }, [blendShapeManager]);
 
-  // Reset all blend shapes
   const resetBlendShapes = useCallback(() => {
+    blendShapeManager?.reset();
     setCurrentBlendShapes({});
     setCurrentExpression(null);
     setExpressionWeight(1);
-  }, []);
+  }, [blendShapeManager]);
 
-  // Get blend shape value
   const getBlendShape = useCallback((name: string): number => {
-    return currentBlendShapes[name] ?? 0;
-  }, [currentBlendShapes]);
+    return blendShapeManager?.getBlendShape(name) ?? currentBlendShapes[name] ?? 0;
+  }, [blendShapeManager, currentBlendShapes]);
 
-  // Check if blend shape is available
   const hasBlendShape = useCallback((name: string): boolean => {
+    if (blendShapeManager?.isInitialized()) {
+      return blendShapeManager.hasBlendShape(name);
+    }
     return availableBlendShapes.includes(name);
-  }, [availableBlendShapes]);
+  }, [blendShapeManager, availableBlendShapes]);
 
   return {
-    // State
     availableBlendShapes,
     currentBlendShapes,
     currentExpression,
     expressionWeight,
-
-    // Actions
     setBlendShape,
     setBlendShapes,
     setExpression,
@@ -123,8 +151,7 @@ export function useBlendShapes(): BlendShapeControls {
 }
 
 /**
- * useBlendShapeValue hook
- * Get and set a specific blend shape value
+ * useBlendShapeValue hook — controlled-input helper for a single shape.
  */
 export function useBlendShapeValue(): {
   value: number;
@@ -143,8 +170,7 @@ export function useBlendShapeValue(): {
 }
 
 /**
- * useExpression hook
- * Get and set expression preset
+ * useExpression hook — independent expression preset state for non-shared UI.
  */
 export function useExpression(): {
   currentExpression: ExpressionPresetName | null;
