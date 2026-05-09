@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { AnimationCard } from './AnimationCard';
 import { Input } from '../ui/Input';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { AnimationEditor } from './AnimationEditor';
 import { useDatabase } from '../../hooks/useDatabase';
 import type { AnimationRecord } from '../../types/database.types';
@@ -31,51 +32,115 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
   const [animationList, setAnimationList] = useState<AnimationData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Fetch animations from database
-  useEffect(() => {
-    const fetchAnimations = async () => {
-      if (!isInitialized) return;
-      
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await animations.getAll();
+  // Multi-select / bulk-delete state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDialog, setConfirmDialog] = useState<
+    | { kind: 'bulkDelete'; count: number }
+    | { kind: 'clearAll'; count: number }
+    | null
+  >(null);
 
-        // Extract data from result - handle both DatabaseOperationResult and DatabaseQueryResult types
-        const records =
-          'data' in result && Array.isArray(result.data)
-            ? (result.data as AnimationRecord[])
-            : null;
+  const fetchAnimations = useCallback(async () => {
+    if (!isInitialized) return;
 
-        if (records) {
-          const transformedData: AnimationData[] = records.map((record) => ({
-            id: record.uuid,
-            name: record.name,
-            description: record.description,
-            thumbnail: record.thumbnail,
-            duration: record.duration,
-            createdAt: record.createdAt.toISOString(),
-          }));
-          setAnimationList(transformedData);
-        } else {
-          setError('Failed to load animations');
-        }
-      } catch (err) {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const result = await animations.getAll();
+
+      const records =
+        'data' in result && Array.isArray(result.data)
+          ? (result.data as AnimationRecord[])
+          : null;
+
+      if (records) {
+        const transformedData: AnimationData[] = records.map((record) => ({
+          id: record.uuid,
+          name: record.name,
+          description: record.description,
+          thumbnail: record.thumbnail,
+          duration: record.duration,
+          createdAt: record.createdAt.toISOString(),
+        }));
+        setAnimationList(transformedData);
+      } else {
         setError('Failed to load animations');
-        console.error('Error fetching animations:', err);
-      } finally {
-        setIsLoading(false);
       }
-    };
-
-    fetchAnimations();
+    } catch (err) {
+      setError('Failed to load animations');
+      console.error('Error fetching animations:', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, [isInitialized, animations]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAnimations();
+  }, [fetchAnimations]);
   
   const filteredAnimations = animationList.filter((animation) =>
     animation.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     animation.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const toggleSelectMode = () => {
+    setSelectMode((v) => {
+      if (v) setSelectedIds(new Set());
+      return !v;
+    });
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIds(new Set(filteredAnimations.map((a) => a.id)));
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const performBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    setConfirmDialog(null);
+    if (ids.length === 0) return;
+    const result = await animations.bulkDelete(ids);
+    if (result.success) {
+      setStatusMessage({ type: 'success', text: `Deleted ${ids.length} animation${ids.length === 1 ? '' : 's'}` });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      await fetchAnimations();
+    } else {
+      const errorMessage = typeof result.error === 'string'
+        ? result.error
+        : result.error?.message || 'Bulk delete failed';
+      setStatusMessage({ type: 'error', text: errorMessage });
+    }
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
+
+  const performClearAll = async () => {
+    setConfirmDialog(null);
+    const result = await animations.clearAll();
+    if (result.success) {
+      setStatusMessage({ type: 'success', text: 'All animations cleared' });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      await fetchAnimations();
+    } else {
+      const errorMessage = typeof result.error === 'string'
+        ? result.error
+        : result.error?.message || 'Clear all failed';
+      setStatusMessage({ type: 'error', text: errorMessage });
+    }
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
 
   const handleEdit = (id: string) => {
     const animation = animationList.find((a) => a.id === id);
@@ -91,13 +156,78 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search Bar */}
-      <div className="p-4 border-b border-gray-700">
+      {/* Status notification */}
+      {statusMessage && (
+        <div className={`px-4 py-3 border-b ${
+          statusMessage.type === 'success'
+            ? 'bg-green-900/50 border-green-700'
+            : 'bg-red-900/50 border-red-700'
+        }`}>
+          <p className={`text-sm ${
+            statusMessage.type === 'success' ? 'text-green-300' : 'text-red-300'
+          }`}>
+            {statusMessage.text}
+          </p>
+        </div>
+      )}
+
+      {/* Search + bulk-action toolbar */}
+      <div className="p-4 border-b border-gray-700 space-y-2">
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search animations..."
         />
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-gray-400">
+            {selectMode
+              ? `${selectedIds.size} selected${animationList.length ? ` of ${animationList.length}` : ''}`
+              : `${animationList.length} animation${animationList.length === 1 ? '' : 's'}`}
+          </span>
+          <div className="flex gap-2">
+            {selectMode ? (
+              <>
+                <button
+                  onClick={selectedIds.size === filteredAnimations.length ? clearSelection : selectAll}
+                  disabled={filteredAnimations.length === 0}
+                  className="text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {selectedIds.size === filteredAnimations.length && filteredAnimations.length > 0 ? 'Clear' : 'All'}
+                </button>
+                <button
+                  onClick={() =>
+                    selectedIds.size > 0 &&
+                    setConfirmDialog({ kind: 'bulkDelete', count: selectedIds.size })
+                  }
+                  disabled={selectedIds.size === 0}
+                  className="text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Delete ({selectedIds.size})
+                </button>
+                <button onClick={toggleSelectMode} className="text-gray-300 hover:text-white">
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={toggleSelectMode}
+                  disabled={animationList.length === 0}
+                  className="text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Select
+                </button>
+                <button
+                  onClick={() => setConfirmDialog({ kind: 'clearAll', count: animationList.length })}
+                  disabled={animationList.length === 0}
+                  className="text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Clear all
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
       
       {/* Animation Grid */}
@@ -134,24 +264,63 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {filteredAnimations.map((animation) => (
-              <AnimationCard
-                key={animation.id}
-                animation={animation}
-                onPlay={onPlay}
-                onDelete={onDelete}
-                onEdit={handleEdit}
-              />
+              <div key={animation.id} className="relative">
+                {selectMode && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelected(animation.id)}
+                    aria-label={selectedIds.has(animation.id) ? 'Deselect' : 'Select'}
+                    className={`absolute top-2 left-2 z-10 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                      selectedIds.has(animation.id)
+                        ? 'bg-blue-500 border-blue-500 text-white'
+                        : 'bg-gray-900/70 border-gray-500 hover:border-blue-400'
+                    }`}
+                  >
+                    {selectedIds.has(animation.id) && (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+                <AnimationCard
+                  animation={animation}
+                  onPlay={selectMode ? () => toggleSelected(animation.id) : onPlay}
+                  onDelete={onDelete}
+                  onEdit={handleEdit}
+                />
+              </div>
             ))}
           </div>
         )}
       </div>
-      
+
       {/* Editor Dialog */}
       <AnimationEditor
         isOpen={!!editingAnimation}
         onClose={() => setEditingAnimation(undefined)}
         onSave={handleSave}
         animation={editingAnimation}
+      />
+
+      {/* Destructive-action confirmation */}
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.kind === 'clearAll' ? 'Clear entire animation library?' : 'Delete selected animations?'}
+        message={
+          confirmDialog?.kind === 'clearAll'
+            ? `This will remove all ${confirmDialog.count} animations from the database. This cannot be undone.`
+            : confirmDialog
+              ? `This will delete ${confirmDialog.count} animation${confirmDialog.count === 1 ? '' : 's'}. This cannot be undone.`
+              : ''
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          if (confirmDialog?.kind === 'clearAll') performClearAll();
+          else if (confirmDialog?.kind === 'bulkDelete') performBulkDelete();
+        }}
+        onCancel={() => setConfirmDialog(null)}
       />
     </div>
   );

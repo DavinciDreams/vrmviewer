@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ModelCard } from './ModelCard';
 import { Input } from '../ui/Input';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { AnimationEditor } from './AnimationEditor';
 import { useDatabase } from '../../hooks/useDatabase';
 import { getThumbnailService } from '../../core/database/services/ThumbnailService';
@@ -32,7 +33,16 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteMessage, setDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  
+
+  // Multi-select / bulk-delete state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDialog, setConfirmDialog] = useState<
+    | { kind: 'bulkDelete'; count: number }
+    | { kind: 'clearAll'; count: number }
+    | null
+  >(null);
+
   // Thumbnail service
   const thumbnailService = getThumbnailService();
 
@@ -114,6 +124,66 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     setEditingModel(undefined);
   };
 
+  const toggleSelectMode = () => {
+    setSelectMode((v) => {
+      if (v) setSelectedIds(new Set());
+      return !v;
+    });
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(filteredModels.map((m) => m.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const performBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    setConfirmDialog(null);
+    if (ids.length === 0) return;
+    const result = await models.bulkDelete(ids);
+    if (result.success) {
+      setDeleteMessage({ type: 'success', text: `Deleted ${ids.length} model${ids.length === 1 ? '' : 's'}` });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      await fetchModels();
+    } else {
+      const errorMessage = typeof result.error === 'string'
+        ? result.error
+        : result.error?.message || 'Bulk delete failed';
+      setDeleteMessage({ type: 'error', text: errorMessage });
+    }
+    setTimeout(() => setDeleteMessage(null), 4000);
+  };
+
+  const performClearAll = async () => {
+    setConfirmDialog(null);
+    const result = await models.clearAll();
+    if (result.success) {
+      setDeleteMessage({ type: 'success', text: 'All models cleared' });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      await fetchModels();
+    } else {
+      const errorMessage = typeof result.error === 'string'
+        ? result.error
+        : result.error?.message || 'Clear all failed';
+      setDeleteMessage({ type: 'error', text: errorMessage });
+    }
+    setTimeout(() => setDeleteMessage(null), 4000);
+  };
+
   const handleDelete = async (id: string): Promise<{ success: boolean; error?: string }> => {
     const result = await onDelete(id);
     if (result.success) {
@@ -164,13 +234,63 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
         </div>
       )}
       
-      {/* Search Bar */}
-      <div className="p-4 border-b border-gray-700">
+      {/* Search + bulk-action toolbar */}
+      <div className="p-4 border-b border-gray-700 space-y-2">
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search models..."
         />
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-gray-400">
+            {selectMode
+              ? `${selectedIds.size} selected${modelList.length ? ` of ${modelList.length}` : ''}`
+              : `${modelList.length} model${modelList.length === 1 ? '' : 's'}`}
+          </span>
+          <div className="flex gap-2">
+            {selectMode ? (
+              <>
+                <button
+                  onClick={selectedIds.size === filteredModels.length ? clearSelection : selectAll}
+                  disabled={filteredModels.length === 0}
+                  className="text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {selectedIds.size === filteredModels.length && filteredModels.length > 0 ? 'Clear' : 'All'}
+                </button>
+                <button
+                  onClick={() =>
+                    selectedIds.size > 0 &&
+                    setConfirmDialog({ kind: 'bulkDelete', count: selectedIds.size })
+                  }
+                  disabled={selectedIds.size === 0}
+                  className="text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Delete ({selectedIds.size})
+                </button>
+                <button onClick={toggleSelectMode} className="text-gray-300 hover:text-white">
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={toggleSelectMode}
+                  disabled={modelList.length === 0}
+                  className="text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Select
+                </button>
+                <button
+                  onClick={() => setConfirmDialog({ kind: 'clearAll', count: modelList.length })}
+                  disabled={modelList.length === 0}
+                  className="text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Clear all
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
       
       {/* Model Grid */}
@@ -207,24 +327,63 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {filteredModels.map((model) => (
-              <ModelCard
-                key={model.id}
-                model={model}
-                onLoad={onLoad}
-                onDelete={handleDelete}
-                onEdit={handleEdit}
-              />
+              <div key={model.id} className="relative">
+                {selectMode && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelected(model.id)}
+                    aria-label={selectedIds.has(model.id) ? 'Deselect' : 'Select'}
+                    className={`absolute top-2 left-2 z-10 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                      selectedIds.has(model.id)
+                        ? 'bg-blue-500 border-blue-500 text-white'
+                        : 'bg-gray-900/70 border-gray-500 hover:border-blue-400'
+                    }`}
+                  >
+                    {selectedIds.has(model.id) && (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+                <ModelCard
+                  model={model}
+                  onLoad={selectMode ? () => toggleSelected(model.id) : onLoad}
+                  onDelete={handleDelete}
+                  onEdit={handleEdit}
+                />
+              </div>
             ))}
           </div>
         )}
       </div>
-      
+
       {/* Editor Dialog */}
       <AnimationEditor
         isOpen={!!editingModel}
         onClose={() => setEditingModel(undefined)}
         onSave={handleSave}
         animation={editingModel ? { id: editingModel.id, name: editingModel.name, description: editingModel.description } : undefined}
+      />
+
+      {/* Destructive-action confirmation */}
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.kind === 'clearAll' ? 'Clear entire library?' : 'Delete selected models?'}
+        message={
+          confirmDialog?.kind === 'clearAll'
+            ? `This will remove all ${confirmDialog.count} models and their thumbnails from the database. This cannot be undone.`
+            : confirmDialog
+              ? `This will delete ${confirmDialog.count} model${confirmDialog.count === 1 ? '' : 's'} and their thumbnails. This cannot be undone.`
+              : ''
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          if (confirmDialog?.kind === 'clearAll') performClearAll();
+          else if (confirmDialog?.kind === 'bulkDelete') performBulkDelete();
+        }}
+        onCancel={() => setConfirmDialog(null)}
       />
     </div>
   );
