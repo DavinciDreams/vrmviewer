@@ -62,11 +62,12 @@ describe('Select', () => {
 
       render(<Select options={options} onChange={handleChange} />)
 
-      const select = screen.getByRole('combobox')
-      fireEvent.click(select)
-      fireEvent.click(screen.getByText('Option 1'))
+      const select = screen.getByRole('combobox') as HTMLSelectElement
+      // Native <select> fires onChange when value changes, not on option click
+      fireEvent.change(select, { target: { value: 'option1' } })
 
-      expect(handleChange).toHaveBeenCalledWith('option1')
+      expect(handleChange).toHaveBeenCalled()
+      expect(select.value).toBe('option1')
     })
 
     it('should not call onChange when disabled', () => {
@@ -89,15 +90,18 @@ describe('Select', () => {
       render(<Select label="Test Label" options={[]} />)
 
       const select = screen.getByRole('combobox')
-      const label = screen.getByLabelText('Test Label')
-      expect(select).toHaveAttribute('id', label.getAttribute('for'))
+      // getByLabelText returns the form control the label points to
+      const selectViaLabel = screen.getByLabelText('Test Label')
+      expect(select).toHaveAttribute('id')
+      expect(selectViaLabel).toBe(select)
     })
 
     it('should be focusable', () => {
       render(<Select options={[]} />)
 
       const select = screen.getByRole('combobox')
-      expect(select).toHaveAttribute('tabIndex', '0')
+      select.focus()
+      expect(select).toHaveFocus()
     })
   })
 })

@@ -56,19 +56,20 @@ describe('Dialog', () => {
   describe('closing', () => {
     it('should call onClose when clicking backdrop', () => {
       const handleClose = vi.fn()
-      render(<Dialog isOpen={true} onClose={handleClose}>Content</Dialog>)
+      const { container } = render(<Dialog isOpen={true} onClose={handleClose}>Content</Dialog>)
 
-      const backdrop = screen.getByText('').parentElement
-      if (backdrop) {
-        fireEvent.click(backdrop)
-      }
+      // The backdrop is the div with bg-opacity-50 inside the dialog wrapper
+      const backdrop = container.querySelector('.bg-opacity-50') as HTMLElement
+      expect(backdrop).toBeTruthy()
+      fireEvent.click(backdrop)
 
       expect(handleClose).toHaveBeenCalledTimes(1)
     })
 
     it('should call onClose when clicking close button', () => {
       const handleClose = vi.fn()
-      render(<Dialog isOpen={true} showCloseButton onClose={handleClose}>Content</Dialog>)
+      // Close button only renders inside the title bar; pass a title to surface it.
+      render(<Dialog isOpen={true} title="Test" showCloseButton onClose={handleClose}>Content</Dialog>)
 
       const closeButton = screen.getByLabelText('Close dialog')
       fireEvent.click(closeButton)

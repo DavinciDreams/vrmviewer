@@ -67,16 +67,18 @@ describe('Input', () => {
       render(<Input label="Test Label" />)
 
       const input = screen.getByRole('textbox')
-      const label = screen.getByLabelText('Test Label')
+      // getByLabelText returns the input the label points to
+      const inputViaLabel = screen.getByLabelText('Test Label')
       expect(input).toHaveAttribute('id')
-      expect(label).toHaveAttribute('for', input.getAttribute('id'))
+      expect(inputViaLabel).toBe(input)
     })
 
     it('should be focusable', () => {
       render(<Input />)
 
       const input = screen.getByRole('textbox')
-      expect(input).toHaveAttribute('tabIndex', '0')
+      input.focus()
+      expect(input).toHaveFocus()
     })
   })
 })
