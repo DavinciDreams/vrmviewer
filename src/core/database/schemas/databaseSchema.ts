@@ -12,6 +12,42 @@ import {
 } from '../../../types/database.types';
 
 /**
+ * Asset Type — categorizes the role of a 3D asset.
+ */
+export enum AssetType {
+  CHARACTER = 'character',
+  CREATURE = 'creature',
+  PROP = 'prop',
+  VEHICLE = 'vehicle',
+  ENVIRONMENT = 'environment',
+  EFFECT = 'effect',
+  OTHER = 'other',
+}
+
+/**
+ * Skeleton Type — describes the rig structure of an asset.
+ */
+export enum SkeletonType {
+  HUMANOID = 'humanoid',
+  QUADRUPED = 'quadruped',
+  BIPED = 'biped',
+  AVIAN = 'avian',
+  FISH = 'fish',
+  CUSTOM = 'custom',
+  NONE = 'none',
+}
+
+/**
+ * Preference Record — JSON-stringified user setting keyed by name.
+ */
+export interface PreferenceRecord {
+  id?: number;
+  key: string;
+  value: string;
+  updatedAt: Date;
+}
+
+/**
  * VRM Viewer Database
  * Main database class extending Dexie
  */
@@ -21,6 +57,7 @@ export class VRMViewerDatabase extends Dexie {
   models!: Table<ModelRecord, number>;
   thumbnails!: Table<ThumbnailRecord, number>;
   persistedState!: Table<PersistedStateRecord, string>;
+  preferences!: Table<PreferenceRecord, number>;
 
   constructor() {
     super('VRMViewerDB');
@@ -38,6 +75,11 @@ export class VRMViewerDatabase extends Dexie {
     // Version 2: add persistedState key/value store for Zustand persist payloads
     this.version(2).stores({
       persistedState: '&key, updatedAt',
+    });
+
+    // Version 3: add preferences key/value store for user settings
+    this.version(3).stores({
+      preferences: '++id, &key, updatedAt',
     });
   }
 }
@@ -84,7 +126,7 @@ export async function deleteDatabase(): Promise<void> {
  * Database schema versions
  */
 export const SCHEMA_VERSIONS = {
-  CURRENT: 2,
+  CURRENT: 3,
   VERSIONS: [
     {
       version: 1,
@@ -94,6 +136,10 @@ export const SCHEMA_VERSIONS = {
       version: 2,
       description: 'Add persistedState key/value table for Zustand persist payloads',
     },
+    {
+      version: 3,
+      description: 'Add preferences key/value table for user settings',
+    },
   ],
 };
 
@@ -102,7 +148,7 @@ export const SCHEMA_VERSIONS = {
  */
 export const DATABASE_CONFIG = {
   NAME: 'VRMViewerDB',
-  VERSION: 2,
+  VERSION: 3,
   MAX_SIZE: 500 * 1024 * 1024, // 500MB default
   CHUNK_SIZE: 1024 * 1024, // 1MB chunks for large files
 };

@@ -8,7 +8,7 @@ import { VRMMetadata } from './vrm.types';
 /**
  * Export Format
  */
-export type ExportFormat = 'vrm' | 'vrma' | 'gltf' | 'glb';
+export type ExportFormat = 'vrm' | 'vrma' | 'gltf' | 'glb' | 'fbx' | 'bvh';
 
 /**
  * Export Quality
@@ -38,6 +38,10 @@ export interface ExportOptions {
   binary?: boolean;
   pretty?: boolean;
   customExtensions?: boolean;
+  // Mesh optimization (used by GLTFExporterEnhanced + UniversalExportManager)
+  optimizeMesh?: boolean;
+  mergeMeshes?: boolean;
+  removeUnusedBones?: boolean;
 }
 
 /**
@@ -117,7 +121,9 @@ export interface ExportProgress {
 export type ExportStage =
   | 'INITIALIZING'
   | 'PREPARING'
+  | 'ANALYZING'
   | 'PROCESSING'
+  | 'EXPORTING'
   | 'COMPRESSING'
   | 'GENERATING_THUMBNAIL'
   | 'FINALIZING'
@@ -169,6 +175,7 @@ export type ExportErrorType =
   | 'NO_MODEL_LOADED'
   | 'NO_ANIMATION_LOADED'
   | 'INVALID_FORMAT'
+  | 'UNSUPPORTED_FORMAT'
   | 'EXPORT_FAILED'
   | 'COMPRESSION_FAILED'
   | 'THUMBNAIL_FAILED'
