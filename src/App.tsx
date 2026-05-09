@@ -598,14 +598,32 @@ function App() {
     
     try {
       if (options.format === 'vrm') {
-        // Export VRM
-        const result = await exportVRM(currentModel.scene);
- 
+        // Build VRM-specific overrides from dialog selections.
+        const result = await exportVRM(currentModel.scene, {
+          quality: options.quality,
+          removeUnnecessaryVertices: options.removeUnnecessaryVertices,
+          combineSkeletons: options.combineSkeletons,
+          combineMorphs: options.combineMorphs,
+          metadata: {
+            title: options.name,
+            version: options.version || '1.0',
+            author: options.author || 'Unknown',
+            license: options.license,
+            allowedUserName: options.allowedUserName,
+            violentUsageName: options.violentUsageName,
+            sexualUsageName: options.sexualUsageName,
+            commercialUsageName: options.commercialUsageName,
+            contactInformation: options.contactInformation,
+            reference: options.reference,
+            otherLicenseUrl: options.otherLicenseUrl,
+          },
+        });
+
         if (!result.success) {
           console.error('VRM export failed:', result.error);
           return;
         }
- 
+
         console.log('VRM export successful:', result.data);
       } else if (options.format === 'vrma' && currentAnimation) {
         // Export VRMA
@@ -628,14 +646,14 @@ function App() {
         }
 
         console.log('VRMA export successful:', result.data);
-      } else if (options.format === 'glb') {
-        // Export GLB via the universal exporter (was previously a silent no-op)
-        const result = await exportGLTF(currentModel.scene, 'glb');
+      } else if (options.format === 'glb' || options.format === 'gltf') {
+        // Export via the universal GLTFExporterEnhanced (was previously a no-op for glb)
+        const result = await exportGLTF(currentModel.scene, options.format);
         if (!result.success) {
-          console.error('GLB export failed:', result.error);
+          console.error(`${options.format.toUpperCase()} export failed:`, result.error);
           return;
         }
-        console.log('GLB export successful:', result.data);
+        console.log(`${options.format.toUpperCase()} export successful:`, result.data);
       } else {
         console.warn('Unsupported export format:', options.format);
       }

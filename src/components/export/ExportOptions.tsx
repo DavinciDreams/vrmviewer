@@ -3,13 +3,28 @@ import { Input } from '../ui/Input';
 import { Select, SelectOption } from '../ui/Select';
 
 export interface ExportOptionsData {
-  format: 'vrm' | 'vrma' | 'glb';
+  format: 'vrm' | 'vrma' | 'glb' | 'gltf';
   name: string;
   description?: string;
   author?: string;
   version?: string;
   includeThumbnail: boolean;
-  quality: 'low' | 'medium' | 'high';
+  quality: 'low' | 'medium' | 'high' | 'ultra';
+
+  // VRM-specific optimization flags (ignored for non-VRM formats)
+  removeUnnecessaryVertices?: boolean;
+  combineSkeletons?: boolean;
+  combineMorphs?: boolean;
+
+  // VRM-specific license metadata (ignored for non-VRM formats)
+  license?: string;
+  allowedUserName?: 'OnlyAuthor' | 'ExplicitlyLicensedPerson' | 'Everyone';
+  violentUsageName?: 'Disallow' | 'Allow';
+  sexualUsageName?: 'Disallow' | 'Allow';
+  commercialUsageName?: 'Disallow' | 'Allow';
+  contactInformation?: string;
+  reference?: string;
+  otherLicenseUrl?: string;
 }
 
 export interface ExportOptionsProps {
@@ -21,12 +36,25 @@ const formatOptions: SelectOption[] = [
   { value: 'vrm', label: 'VRM' },
   { value: 'vrma', label: 'VRMA (Animation)' },
   { value: 'glb', label: 'GLB' },
+  { value: 'gltf', label: 'GLTF (JSON)' },
 ];
 
 const qualityOptions: SelectOption[] = [
   { value: 'low', label: 'Low (Smaller file)' },
   { value: 'medium', label: 'Medium (Balanced)' },
   { value: 'high', label: 'High (Best quality)' },
+  { value: 'ultra', label: 'Ultra (4K textures)' },
+];
+
+const allowedUserOptions: SelectOption[] = [
+  { value: 'OnlyAuthor', label: 'Only Author' },
+  { value: 'ExplicitlyLicensedPerson', label: 'Explicitly Licensed Person' },
+  { value: 'Everyone', label: 'Everyone' },
+];
+
+const allowDisallowOptions: SelectOption[] = [
+  { value: 'Disallow', label: 'Disallow' },
+  { value: 'Allow', label: 'Allow' },
 ];
 
 export const ExportOptions: React.FC<ExportOptionsProps> = ({ options, onChange }) => {
@@ -99,6 +127,108 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({ options, onChange 
           Include thumbnail
         </label>
       </div>
+
+      {/* VRM-specific optimization flags */}
+      {options.format === 'vrm' && (
+        <fieldset className="border border-gray-700 rounded-lg p-3 space-y-2">
+          <legend className="text-xs text-gray-400 px-1">VRM optimization</legend>
+          {([
+            ['removeUnnecessaryVertices', 'Remove unnecessary vertices'],
+            ['combineSkeletons', 'Combine skeletons'],
+            ['combineMorphs', 'Combine morph targets'],
+          ] as const).map(([key, label]) => (
+            <div key={key} className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id={`opt-${key}`}
+                // Default ON to match VRMExporter behaviour (`!== false`)
+                checked={options[key] !== false}
+                onChange={(e) => handleChange(key, e.target.checked)}
+                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+              />
+              <label htmlFor={`opt-${key}`} className="text-sm text-gray-300 cursor-pointer">
+                {label}
+              </label>
+            </div>
+          ))}
+        </fieldset>
+      )}
+
+      {/* VRM license metadata */}
+      {options.format === 'vrm' && (
+        <fieldset className="border border-gray-700 rounded-lg p-3 space-y-3">
+          <legend className="text-xs text-gray-400 px-1">VRM license metadata</legend>
+          <Select
+            label="Allowed users"
+            options={allowedUserOptions}
+            value={options.allowedUserName ?? ''}
+            onChange={(e) =>
+              handleChange(
+                'allowedUserName',
+                (e.target.value || undefined) as ExportOptionsData['allowedUserName']
+              )
+            }
+            helperText="Who is permitted to use this avatar"
+          />
+          <Select
+            label="Violent usage"
+            options={allowDisallowOptions}
+            value={options.violentUsageName ?? ''}
+            onChange={(e) =>
+              handleChange(
+                'violentUsageName',
+                (e.target.value || undefined) as ExportOptionsData['violentUsageName']
+              )
+            }
+          />
+          <Select
+            label="Sexual usage"
+            options={allowDisallowOptions}
+            value={options.sexualUsageName ?? ''}
+            onChange={(e) =>
+              handleChange(
+                'sexualUsageName',
+                (e.target.value || undefined) as ExportOptionsData['sexualUsageName']
+              )
+            }
+          />
+          <Select
+            label="Commercial usage"
+            options={allowDisallowOptions}
+            value={options.commercialUsageName ?? ''}
+            onChange={(e) =>
+              handleChange(
+                'commercialUsageName',
+                (e.target.value || undefined) as ExportOptionsData['commercialUsageName']
+              )
+            }
+          />
+          <Input
+            label="License"
+            value={options.license || ''}
+            onChange={(e) => handleChange('license', e.target.value)}
+            placeholder="e.g. CC_BY, CC_BY_NC, Other"
+          />
+          <Input
+            label="Other license URL"
+            value={options.otherLicenseUrl || ''}
+            onChange={(e) => handleChange('otherLicenseUrl', e.target.value)}
+            placeholder="URL of license terms (optional)"
+          />
+          <Input
+            label="Contact"
+            value={options.contactInformation || ''}
+            onChange={(e) => handleChange('contactInformation', e.target.value)}
+            placeholder="Email or website (optional)"
+          />
+          <Input
+            label="Reference"
+            value={options.reference || ''}
+            onChange={(e) => handleChange('reference', e.target.value)}
+            placeholder="Reference URL (optional)"
+          />
+        </fieldset>
+      )}
     </div>
   );
 };
