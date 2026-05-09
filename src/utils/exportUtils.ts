@@ -332,6 +332,7 @@ export function createExportSummary(result: ExportResult): string {
 export class ExportProgressTracker {
   private startTime: number = 0;
   private lastUpdate: number = 0;
+  private hasFiredOnce = false;
   private progressCallback?: (progress: ExportProgress) => void;
 
   constructor(callback?: (progress: ExportProgress) => void) {
@@ -341,15 +342,20 @@ export class ExportProgressTracker {
   }
 
   /**
-   * Update progress
+   * Update progress.
+   *
+   * Fires the callback unconditionally on the first call (so callers see
+   * immediate progress feedback) and then throttles to at most once per
+   * 100ms.
    */
   update(progress: ExportProgress): void {
     const now = Date.now();
     const elapsed = (now - this.startTime) / 1000; // Convert to seconds
 
-    // Throttle updates to at most once per 100ms
-    if (now - this.lastUpdate >= 100) {
+    const shouldFire = !this.hasFiredOnce || (now - this.lastUpdate >= 100);
+    if (shouldFire) {
       this.lastUpdate = now;
+      this.hasFiredOnce = true;
 
       if (this.progressCallback) {
         this.progressCallback({

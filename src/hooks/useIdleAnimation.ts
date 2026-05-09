@@ -119,12 +119,11 @@ export function useIdleAnimation(): IdleAnimationControls {
   }, [idleController, isRunning]);
 
   const setBreathingEnabled = useCallback((enabled: boolean) => {
+    // Just update the sub-feature flag. Don't override the user's explicit
+    // Run/Stop state — if they hit Stop and then toggle breathing on, leave
+    // the controller stopped. They can hit Run again themselves.
     idleController?.setBreathingConfig({ enabled });
     setBreathing((prev) => ({ ...prev, enabled }));
-    if (enabled) {
-      idleController?.start();
-      setIsRunning(true);
-    }
   }, [idleController]);
 
   const setBreathingRate = useCallback((rate: number) => {
@@ -140,12 +139,10 @@ export function useIdleAnimation(): IdleAnimationControls {
   }, [idleController]);
 
   const setBlinkingEnabled = useCallback((enabled: boolean) => {
+    // See `setBreathingEnabled` — sub-feature toggles never override the
+    // top-level Run/Stop state.
     idleController?.setBlinkingConfig({ enabled });
     setBlinking((prev) => ({ ...prev, enabled }));
-    if (enabled) {
-      idleController?.start();
-      setIsRunning(true);
-    }
   }, [idleController]);
 
   const setBlinkingFrequency = useCallback((frequency: number) => {

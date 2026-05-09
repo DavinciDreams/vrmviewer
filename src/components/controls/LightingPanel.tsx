@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { lightingManager } from '../../core/three/scene/LightingManager';
 
 export interface LightingPanelProps {
@@ -32,6 +32,27 @@ export const LightingPanel: React.FC<LightingPanelProps> = ({ disabled = false }
   const [directional, setDirectional] = useState(initial.directional);
   const [rimEnabled, setRimEnabled] = useState(initial.rimEnabled);
   const [rimIntensity, setRimIntensity] = useState(initial.rimIntensity);
+
+  // Re-sync from the manager every time the panel mounts. The IIFE above
+  // runs at construction time, but the manager may be null then (canvas
+  // not yet mounted) or its values may have been mutated externally (DAM
+  // URL params applied via `useDAMIntegration` after this panel was first
+  // rendered). Empty-deps subscribe-on-mount is the documented escape
+  // hatch for syncing external state.
+  useEffect(() => {
+    if (!lightingManager) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- canonical
+       subscribe-to-external-state-on-mount; values come from the
+       imperatively-managed Three.js LightingManager singleton. */
+    setAmbient(lightingManager.getAmbientLight().intensity);
+    setDirectional(lightingManager.getDirectionalLight().intensity);
+    const rim = lightingManager.getRimLight();
+    setRimEnabled(!!rim);
+    if (rim) {
+      setRimIntensity(rim.intensity);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   const handleAmbient = (value: number) => {
     setAmbient(value);

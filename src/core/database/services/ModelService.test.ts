@@ -78,8 +78,9 @@ describe('ModelService', () => {
 
       const result = await service.listModels()
 
-      // Test that the method returns an array
-      expect(Array.isArray(result)).toBe(true)
+      // listModels returns a DatabaseOperationResult wrapper; the array
+      // lives on `.data`.
+      expect(Array.isArray(result.data)).toBe(true)
     })
   })
 
