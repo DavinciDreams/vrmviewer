@@ -128,6 +128,24 @@ export class LightingManager {
   }
 }
 
-// Note: LightingManager requires scene and renderer arguments
-// Cannot create singleton without them
-// Use getLightingManager(scene, renderer) to create an instance
+// Singleton instance — initialised by VRMViewer when the canvas mounts.
+// This mirrors the `cameraManager` pattern so other UI (LightingPanel) can
+// access the active manager without prop-drilling.
+export let lightingManager: LightingManager | null = null;
+
+export function initializeLightingManager(
+  scene: THREE.Scene,
+  renderer: THREE.WebGLRenderer,
+): LightingManager {
+  if (!lightingManager) {
+    lightingManager = new LightingManager(scene, renderer);
+  }
+  return lightingManager;
+}
+
+export function disposeLightingManager(): void {
+  if (lightingManager) {
+    lightingManager.dispose();
+    lightingManager = null;
+  }
+}

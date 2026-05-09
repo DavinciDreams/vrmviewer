@@ -10,6 +10,7 @@ import { useVRMStore } from '../../store/vrmStore';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useAnimationStore } from '../../store/animationStore';
 import { initializeCameraManager, cameraManager } from '../../core/three/scene/CameraManager';
+import { initializeLightingManager, disposeLightingManager } from '../../core/three/scene/LightingManager';
 import { captureThumbnail } from '../../utils/thumbnailUtils';
 import { useThumbnailCapture } from '../../hooks/useThumbnailCapture';
 
@@ -246,16 +247,16 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       resizeObserver.observe(canvasRef.current);
     }
 
-    // Add lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(5, 10, 7);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
-    scene.add(directionalLight);
+    // Add lighting via LightingManager so the LightingPanel can tune it.
+    // Polls for renderer to be ready (canvas-driven init runs after this effect).
+    const installLighting = () => {
+      if (rendererRef.current) {
+        initializeLightingManager(scene, rendererRef.current);
+      } else {
+        setTimeout(installLighting, 50);
+      }
+    };
+    installLighting();
 
     // Notify parent of canvas ref
     if (onCanvasRef) {
@@ -274,6 +275,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       if (cameraManager) {
         cameraManager.dispose();
       }
+      disposeLightingManager();
     };
   }, [onCanvasRef]);
 
