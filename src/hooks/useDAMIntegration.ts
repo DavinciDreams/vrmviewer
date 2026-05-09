@@ -11,6 +11,7 @@ import { usePlayback } from './usePlayback';
 import { useAnimation } from './useAnimation';
 import { cameraManager } from '../core/three/scene/CameraManager';
 import { lightingManager } from '../core/three/scene/LightingManager';
+import { usePlaybackStore } from '../store/playbackStore';
 
 /**
  * DAM configuration from URL query parameters
@@ -402,7 +403,3 @@ export function useDAMIntegration(): DAMIntegrationResult {
   };
 }
 
-/**
- * Import playback store for loop state check
- */
-import { usePlaybackStore } from '../store/playbackStore';

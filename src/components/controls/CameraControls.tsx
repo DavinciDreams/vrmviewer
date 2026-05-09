@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { cameraManager } from '../../core/three/scene/CameraManager';
 
 export interface CameraControlsProps {
@@ -9,6 +9,9 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ disabled = false
   const [panSpeed, setPanSpeed] = useState(1.0);
   const [rotateSpeed, setRotateSpeed] = useState(1.0);
   const [zoomSpeed, setZoomSpeed] = useState(1.0);
+  const panId = useId();
+  const rotateId = useId();
+  const zoomId = useId();
 
   const handlePanSpeedChange = (value: number) => {
     const speed = parseFloat(value.toFixed(1));
@@ -43,10 +46,11 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ disabled = false
       {/* Pan Speed Control */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-300">Pan Speed</label>
+          <label htmlFor={panId} className="text-sm text-gray-300">Pan Speed</label>
           <span className="text-sm text-blue-400 font-mono">{panSpeed.toFixed(1)}</span>
         </div>
         <input
+          id={panId}
           type="range"
           min="0.1"
           max="5.0"
@@ -65,10 +69,11 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ disabled = false
       {/* Rotate Speed Control */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-300">Rotate Speed</label>
+          <label htmlFor={rotateId} className="text-sm text-gray-300">Rotate Speed</label>
           <span className="text-sm text-blue-400 font-mono">{rotateSpeed.toFixed(1)}</span>
         </div>
         <input
+          id={rotateId}
           type="range"
           min="0.1"
           max="5.0"
@@ -87,10 +92,11 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ disabled = false
       {/* Zoom Speed Control */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-300">Zoom Speed</label>
+          <label htmlFor={zoomId} className="text-sm text-gray-300">Zoom Speed</label>
           <span className="text-sm text-blue-400 font-mono">{zoomSpeed.toFixed(1)}</span>
         </div>
         <input
+          id={zoomId}
           type="range"
           min="0.1"
           max="5.0"

@@ -42,6 +42,9 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     | { kind: 'clearAll'; count: number }
     | null
   >(null);
+  // Latch while a destructive operation is in flight so a double-click on the
+  // confirm button doesn't fire two concurrent bulk-delete calls.
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Thumbnail service
   const thumbnailService = getThumbnailService();
@@ -149,39 +152,54 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   };
 
   const performBulkDelete = async () => {
+    if (isDeleting) return;
     const ids = Array.from(selectedIds);
+    setIsDeleting(true);
     setConfirmDialog(null);
-    if (ids.length === 0) return;
-    const result = await models.bulkDelete(ids);
-    if (result.success) {
-      setDeleteMessage({ type: 'success', text: `Deleted ${ids.length} model${ids.length === 1 ? '' : 's'}` });
-      setSelectedIds(new Set());
-      setSelectMode(false);
-      await fetchModels();
-    } else {
-      const errorMessage = typeof result.error === 'string'
-        ? result.error
-        : result.error?.message || 'Bulk delete failed';
-      setDeleteMessage({ type: 'error', text: errorMessage });
+    if (ids.length === 0) {
+      setIsDeleting(false);
+      return;
     }
-    setTimeout(() => setDeleteMessage(null), 4000);
+    try {
+      const result = await models.bulkDelete(ids);
+      if (result.success) {
+        setDeleteMessage({ type: 'success', text: `Deleted ${ids.length} model${ids.length === 1 ? '' : 's'}` });
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        await fetchModels();
+      } else {
+        const errorMessage = typeof result.error === 'string'
+          ? result.error
+          : result.error?.message || 'Bulk delete failed';
+        setDeleteMessage({ type: 'error', text: errorMessage });
+      }
+    } finally {
+      setIsDeleting(false);
+      setTimeout(() => setDeleteMessage(null), 4000);
+    }
   };
 
   const performClearAll = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
     setConfirmDialog(null);
-    const result = await models.clearAll();
-    if (result.success) {
-      setDeleteMessage({ type: 'success', text: 'All models cleared' });
-      setSelectedIds(new Set());
-      setSelectMode(false);
-      await fetchModels();
-    } else {
-      const errorMessage = typeof result.error === 'string'
-        ? result.error
-        : result.error?.message || 'Clear all failed';
-      setDeleteMessage({ type: 'error', text: errorMessage });
+    try {
+      const result = await models.clearAll();
+      if (result.success) {
+        setDeleteMessage({ type: 'success', text: 'All models cleared' });
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        await fetchModels();
+      } else {
+        const errorMessage = typeof result.error === 'string'
+          ? result.error
+          : result.error?.message || 'Clear all failed';
+        setDeleteMessage({ type: 'error', text: errorMessage });
+      }
+    } finally {
+      setIsDeleting(false);
+      setTimeout(() => setDeleteMessage(null), 4000);
     }
-    setTimeout(() => setDeleteMessage(null), 4000);
   };
 
   const handleDelete = async (id: string): Promise<{ success: boolean; error?: string }> => {
