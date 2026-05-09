@@ -176,6 +176,16 @@ export function useDatabase() {
   };
 
   /**
+   * Bulk delete animations by uuid list
+   */
+  const bulkDeleteAnimations = async (uuids: string[]) => {
+    const svc = animationService;
+    if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Animation service not initialized' } };
+    await svc.initialize();
+    return await svc.bulkDeleteAnimations(uuids);
+  };
+
+  /**
    * Clear all animations
    */
   const clearAllAnimations = async () => {
@@ -315,6 +325,16 @@ export function useDatabase() {
   };
 
   /**
+   * Bulk delete models by uuid list
+   */
+  const bulkDeleteModels = async (uuids: string[]) => {
+    const svc = modelService;
+    if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Model service not initialized' } };
+    await svc.initialize();
+    return await svc.bulkDeleteModels(uuids);
+  };
+
+  /**
    * Clear all models
    */
   const clearAllModels = async () => {
@@ -362,6 +382,7 @@ export function useDatabase() {
       getUniqueTags: getUniqueAnimationTags,
       getRecent: getRecentAnimations,
       exists: animationExists,
+      bulkDelete: bulkDeleteAnimations,
       clearAll: clearAllAnimations,
       // The closures here all read from animationService at call time, so
       // animationService is the only meaningful dependency. The closures are
@@ -387,6 +408,7 @@ export function useDatabase() {
       getUniqueTags: getUniqueModelTags,
       getRecent: getRecentModels,
       exists: modelExists,
+      bulkDelete: bulkDeleteModels,
       clearAll: clearAllModels,
       // Closures all read from modelService at call time; see note above.
       // eslint-disable-next-line react-hooks/exhaustive-deps
