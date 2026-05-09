@@ -278,6 +278,30 @@ export class CameraManager {
   }
 
   /**
+   * Set OrbitControls pan speed (delegates to underlying controls).
+   */
+  setPanSpeed(speed: number): void {
+    this.controls.panSpeed = speed;
+    this.controls.update();
+  }
+
+  /**
+   * Set OrbitControls rotation speed.
+   */
+  setRotateSpeed(speed: number): void {
+    this.controls.rotateSpeed = speed;
+    this.controls.update();
+  }
+
+  /**
+   * Set OrbitControls zoom speed.
+   */
+  setZoomSpeed(speed: number): void {
+    this.controls.zoomSpeed = speed;
+    this.controls.update();
+  }
+
+  /**
    * Update aspect ratio
    */
   updateAspectRatio(width: number, height: number): void {
