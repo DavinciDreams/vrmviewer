@@ -3,7 +3,9 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ModelService } from './ModelService'
+import { AssetType } from '../schemas/databaseSchema'
 
 describe('ModelService', () => {
   beforeEach(() => {
@@ -47,6 +49,8 @@ describe('ModelService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         version: '0.0' as const,
+        assetType: AssetType.CHARACTER,
+        order: 0,
       }
  
       await service.saveModel(_mockModel)

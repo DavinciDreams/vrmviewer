@@ -5,7 +5,7 @@ import { ModelLibrary } from '../database/ModelLibrary';
 export interface SidebarProps {
   children?: React.ReactNode;
   onAnimationPlay?: (id: string) => void;
-  onAnimationDelete?: (id: string) => void;
+  onAnimationDelete?: (id: string) => Promise<{ success: boolean; error?: string }>;
   onAnimationUpdate?: (id: string, name: string, description: string) => void;
   onModelLoad?: (id: string) => void;
   onModelDelete?: (id: string) => Promise<{ success: boolean; error?: { type: string; message: string; } | undefined }>;
@@ -68,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {activeTab === 'animations' && (
           <AnimationLibrary
             onPlay={onAnimationPlay || (() => {})}
-            onDelete={onAnimationDelete || (() => {})}
+            onDelete={onAnimationDelete || (async () => ({ success: true }))}
             onUpdate={onAnimationUpdate || (() => {})}
           />
         )}

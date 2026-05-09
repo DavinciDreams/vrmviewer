@@ -28,6 +28,7 @@ import { getPreferencesService } from './core/database/services/PreferencesServi
 import { getThumbnailService } from './core/database/services/ThumbnailService';
 import { parseDataUrl } from './utils/thumbnailUtils';
 import type { AnimationRecord, ModelRecord } from './types/database.types';
+import { AssetType } from './core/database/schemas/databaseSchema';
 
 /**
  * Type guard to check if result has data property
@@ -230,6 +231,7 @@ function App() {
         tags: [],
         format: getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx',
         version: '1.0',
+        assetType: AssetType.CHARACTER,
         author: '',
         license: '',
         thumbnail: '',
@@ -380,13 +382,17 @@ function App() {
   /**
    * Handle animation delete from library
    */
-  const handleAnimationDelete = useCallback(async (animationId: string) => {
+  const handleAnimationDelete = useCallback(async (animationId: string): Promise<{ success: boolean; error?: string }> => {
     const result = await animations.delete(animationId);
     if (result.success) {
       console.log('Animation deleted:', animationId);
-    } else {
-      console.error('Failed to delete animation:', result.error);
+      return { success: true };
     }
+    const errorMessage = typeof result.error === 'string'
+      ? result.error
+      : result.error?.message ?? 'Unknown error';
+    console.error('Failed to delete animation:', result.error);
+    return { success: false, error: errorMessage };
   }, [animations]);
   
   /**

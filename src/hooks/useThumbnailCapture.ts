@@ -45,7 +45,7 @@ export function useThumbnailCapture(config: ThumbnailCaptureConfig = {}) {
     quality = 0.85,
     backgroundColor = '#1a1a2e',
     delay = 100,
-    useFixedAngle = false,
+    useFixedAngle: _useFixedAngle = false,
   } = config;
 
   const thumbnailService = getThumbnailService();
