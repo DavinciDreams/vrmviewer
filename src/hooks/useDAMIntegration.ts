@@ -6,7 +6,7 @@
 
 import { useEffect, useCallback, useState, useRef } from 'react';
 import * as THREE from 'three';
-import { useVRM } from './useVRM';
+import { useModel } from './useModel';
 import { usePlayback } from './usePlayback';
 import { useAnimation } from './useAnimation';
 import { cameraManager } from '../core/three/scene/CameraManager';
@@ -91,7 +91,7 @@ function isValidURL(url: string): boolean {
  * useDAMIntegration Hook
  */
 export function useDAMIntegration(): DAMIntegrationResult {
-  const { loadFromURL: loadVRMFromURL, clearCurrentModel } = useVRM();
+  const { loadFromURL: loadVRMFromURL, clearCurrentModel } = useModel();
   const { play, pause, setSpeed, toggleLoop } = usePlayback();
   const { loadFromFile: loadAnimationFromFile, play: playAnimation, pause: pauseAnimation } = useAnimation();
   

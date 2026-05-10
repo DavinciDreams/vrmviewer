@@ -6,7 +6,7 @@
 import { useCallback, useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
-import { useVRMStore } from '../../store/vrmStore';
+import { useModelStore } from '../../store/modelStore';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useAnimationStore } from '../../store/animationStore';
 import { initializeCameraManager, cameraManager } from '../../core/three/scene/CameraManager';
@@ -61,7 +61,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const animationFrameRef = useRef<number | null>(null);
 
   // Store state
-  const { currentModel, isLoading: vrmLoading, metadata } = useVRMStore();
+  const { currentModel, isLoading: vrmLoading, metadata } = useModelStore();
   const {
     isPlaying,
     loop,
