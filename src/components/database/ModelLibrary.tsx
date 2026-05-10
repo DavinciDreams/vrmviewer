@@ -12,6 +12,8 @@ export interface ModelData {
   description?: string;
   thumbnail?: string;
   createdAt: string;
+  format?: string;
+  category?: string;
 }
 
 export interface ModelLibraryProps {
@@ -46,6 +48,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   // confirm button doesn't fire two concurrent bulk-delete calls.
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Filters
+  const [formatFilter, setFormatFilter] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+
   // Thumbnail service
   const thumbnailService = getThumbnailService();
 
@@ -70,6 +76,8 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           description: record.description,
           thumbnail: record.thumbnail,
           createdAt: record.createdAt.toISOString(),
+          format: record.format,
+          category: record.category,
         }));
         setModelList(transformedData);
 
@@ -98,21 +106,38 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     fetchModels();
   }, [fetchModels]);
 
+  // Unique formats + categories derived from the loaded list so the filter
+  // dropdowns only show options that actually have records.
+  const availableFormats = useMemo(
+    () => Array.from(new Set(modelList.map((m) => m.format).filter((f): f is string => !!f))).sort(),
+    [modelList],
+  );
+  const availableCategories = useMemo(
+    () => Array.from(new Set(modelList.map((m) => m.category).filter((c): c is string => !!c))).sort(),
+    [modelList],
+  );
+
   // Merge thumbnails into the displayed list at render time so we don't have to
   // re-sync separate state via an effect when thumbnails resolve.
   const filteredModels = useMemo(
-    () =>
-      modelList
-        .filter(
-          (model) =>
-            model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            model.description?.toLowerCase().includes(searchQuery.toLowerCase()),
-        )
+    () => {
+      const q = searchQuery.toLowerCase();
+      return modelList
+        .filter((model) => {
+          const matchesSearch =
+            !q ||
+            model.name.toLowerCase().includes(q) ||
+            model.description?.toLowerCase().includes(q);
+          const matchesFormat = !formatFilter || model.format === formatFilter;
+          const matchesCategory = !categoryFilter || model.category === categoryFilter;
+          return matchesSearch && matchesFormat && matchesCategory;
+        })
         .map((model) => ({
           ...model,
           thumbnail: thumbnails[model.id] || model.thumbnail,
-        })),
-    [modelList, thumbnails, searchQuery],
+        }));
+    },
+    [modelList, thumbnails, searchQuery, formatFilter, categoryFilter],
   );
 
   const handleEdit = (id: string) => {
@@ -252,18 +277,59 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
         </div>
       )}
       
-      {/* Search + bulk-action toolbar */}
+      {/* Search + filter + bulk-action toolbar */}
       <div className="p-4 border-b border-gray-700 space-y-2">
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search models..."
         />
+        {(availableFormats.length > 0 || availableCategories.length > 0) && (
+          <div className="flex gap-2">
+            {availableFormats.length > 0 && (
+              <select
+                value={formatFilter}
+                onChange={(e) => setFormatFilter(e.target.value)}
+                aria-label="Filter by format"
+                className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All formats</option>
+                {availableFormats.map((f) => (
+                  <option key={f} value={f}>{f.toUpperCase()}</option>
+                ))}
+              </select>
+            )}
+            {availableCategories.length > 0 && (
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                aria-label="Filter by category"
+                className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All categories</option>
+                {availableCategories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
+            {(formatFilter || categoryFilter) && (
+              <button
+                onClick={() => { setFormatFilter(''); setCategoryFilter(''); }}
+                className="text-xs text-gray-400 hover:text-white px-1"
+                title="Clear filters"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="text-gray-400">
             {selectMode
-              ? `${selectedIds.size} selected${modelList.length ? ` of ${modelList.length}` : ''}`
-              : `${modelList.length} model${modelList.length === 1 ? '' : 's'}`}
+              ? `${selectedIds.size} selected${filteredModels.length ? ` of ${filteredModels.length}` : ''}`
+              : (formatFilter || categoryFilter)
+                ? `${filteredModels.length} of ${modelList.length} model${modelList.length === 1 ? '' : 's'}`
+                : `${modelList.length} model${modelList.length === 1 ? '' : 's'}`}
           </span>
           <div className="flex gap-2">
             {selectMode ? (
