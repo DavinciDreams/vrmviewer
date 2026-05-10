@@ -6,11 +6,12 @@
 import { useCallback, useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
-import { useVRMStore } from '../../store/vrmStore';
+import { useModelStore } from '../../store/modelStore';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useAnimationStore } from '../../store/animationStore';
 import { initializeCameraManager, cameraManager } from '../../core/three/scene/CameraManager';
 import { initializeLightingManager, disposeLightingManager } from '../../core/three/scene/LightingManager';
+import { initializeSceneManager, disposeSceneManager } from '../../core/three/scene/SceneManager';
 import { captureThumbnail } from '../../utils/thumbnailUtils';
 import { useThumbnailCapture } from '../../hooks/useThumbnailCapture';
 
@@ -60,7 +61,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const animationFrameRef = useRef<number | null>(null);
 
   // Store state
-  const { currentModel, isLoading: vrmLoading, metadata } = useVRMStore();
+  const { currentModel, isLoading: vrmLoading, metadata } = useModelStore();
   const {
     isPlaying,
     loop,
@@ -204,10 +205,12 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Create scene
+    // Create scene and register it with the SceneManager singleton so other
+    // code can access it without prop-drilling sceneRef.
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a1a2e);
     sceneRef.current = scene;
+    initializeSceneManager(scene);
 
     // Initialize renderer when canvas has actual dimensions
     const resizeObserver = new ResizeObserver((entries) => {
@@ -276,6 +279,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         cameraManager.dispose();
       }
       disposeLightingManager();
+      disposeSceneManager();
     };
   }, [onCanvasRef]);
 

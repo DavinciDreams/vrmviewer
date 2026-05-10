@@ -15,7 +15,8 @@ import { PosePanel } from './components/controls/PosePanel';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
 import { Button } from './components/ui/Button';
-import { useVRM } from './hooks/useVRM';
+import { useModel } from './hooks/useModel';
+import { useAnimationStore } from './store/animationStore';
 import { usePlayback } from './hooks/usePlayback';
 import { useAnimation } from './hooks/useAnimation';
 import { useIdleAnimation } from './hooks/useIdleAnimation';
@@ -50,8 +51,8 @@ function hasSuccessAndData<T>(result: unknown): result is { success: boolean; da
 }
 
 function App() {
-  // VRM
-  const { currentModel, isLoading, error, metadata, loadModelFromFile, clearCurrentModel } = useVRM();
+  // Model (format-agnostic — replaces the deprecated useVRM)
+  const { currentModel, isLoading, error, metadata, loadModelFromFile, clearCurrentModel } = useModel();
   // Playback
   const { play, pause, stop, seek, setSpeed, toggleLoop } = usePlayback();
   // Animation
@@ -123,6 +124,25 @@ function App() {
       stopIdleAnimation();
     }
   }, [currentModel, currentAnimation, startIdleAnimation, stopIdleAnimation]);
+
+  /**
+   * Initialize the animation/blend-shape/idle managers against the current
+   * VRM. Without this, VRMViewer's render-loop calls (`animationManager?.
+   * update()` etc.) run on `null` and animations / expressions / idle
+   * motion silently no-op. Previously lived inside `useVRM`; now lives
+   * here so `useModel` (which is format-agnostic) doesn't need to own it.
+   *
+   * Cleanup disposes the managers — runs on unmount AND before re-applying
+   * for a new VRM, so loading model B after model A gets fresh managers.
+   */
+  useEffect(() => {
+    if (currentModel?.vrm) {
+      useAnimationStore.getState().initializeManagers(currentModel.vrm);
+    }
+    return () => {
+      useAnimationStore.getState().disposeManagers();
+    };
+  }, [currentModel]);
 
   /**
    * Auto-restore the last loaded model + camera state on app startup.

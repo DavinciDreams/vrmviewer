@@ -13,6 +13,8 @@ export interface AnimationData {
   thumbnail?: string;
   duration?: number;
   createdAt: string;
+  format?: string;
+  category?: string;
 }
 
 export interface AnimationLibraryProps {
@@ -48,6 +50,10 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
   // confirm button doesn't fire two concurrent calls.
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Filters
+  const [formatFilter, setFormatFilter] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+
   const fetchAnimations = useCallback(async () => {
     if (!isInitialized) return;
 
@@ -69,6 +75,8 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
           thumbnail: record.thumbnail,
           duration: record.duration,
           createdAt: record.createdAt.toISOString(),
+          format: record.format,
+          category: record.category,
         }));
         setAnimationList(transformedData);
       } else {
@@ -87,7 +95,17 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
     fetchAnimations();
   }, [fetchAnimations]);
   
-  const filteredAnimations = animationList.filter((animation) =>
+  const availableFormats = Array.from(
+    new Set(animationList.map((a) => a.format).filter((f): f is string => !!f)),
+  ).sort();
+  const availableCategories = Array.from(
+    new Set(animationList.map((a) => a.category).filter((c): c is string => !!c)),
+  ).sort();
+
+  const filteredAnimations = animationList
+    .filter((animation) => (!formatFilter || animation.format === formatFilter))
+    .filter((animation) => (!categoryFilter || animation.category === categoryFilter))
+    .filter((animation) =>
     animation.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     animation.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -199,18 +217,59 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
         </div>
       )}
 
-      {/* Search + bulk-action toolbar */}
+      {/* Search + filter + bulk-action toolbar */}
       <div className="p-4 border-b border-gray-700 space-y-2">
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search animations..."
         />
+        {(availableFormats.length > 0 || availableCategories.length > 0) && (
+          <div className="flex gap-2">
+            {availableFormats.length > 0 && (
+              <select
+                value={formatFilter}
+                onChange={(e) => setFormatFilter(e.target.value)}
+                aria-label="Filter by format"
+                className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All formats</option>
+                {availableFormats.map((f) => (
+                  <option key={f} value={f}>{f.toUpperCase()}</option>
+                ))}
+              </select>
+            )}
+            {availableCategories.length > 0 && (
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                aria-label="Filter by category"
+                className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All categories</option>
+                {availableCategories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
+            {(formatFilter || categoryFilter) && (
+              <button
+                onClick={() => { setFormatFilter(''); setCategoryFilter(''); }}
+                className="text-xs text-gray-400 hover:text-white px-1"
+                title="Clear filters"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="text-gray-400">
             {selectMode
-              ? `${selectedIds.size} selected${animationList.length ? ` of ${animationList.length}` : ''}`
-              : `${animationList.length} animation${animationList.length === 1 ? '' : 's'}`}
+              ? `${selectedIds.size} selected${filteredAnimations.length ? ` of ${filteredAnimations.length}` : ''}`
+              : (formatFilter || categoryFilter)
+                ? `${filteredAnimations.length} of ${animationList.length} animation${animationList.length === 1 ? '' : 's'}`
+                : `${animationList.length} animation${animationList.length === 1 ? '' : 's'}`}
           </span>
           <div className="flex gap-2">
             {selectMode ? (

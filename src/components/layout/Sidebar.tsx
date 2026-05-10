@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AnimationLibrary } from '../database/AnimationLibrary';
 import { ModelLibrary } from '../database/ModelLibrary';
+import { DatabaseStatsDialog } from '../database/DatabaseStatsDialog';
 
 export interface SidebarProps {
   children?: React.ReactNode;
@@ -22,9 +23,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onModelUpdate,
   onExport,
 }) => {
-  // Export is an action button, not a tab — clicking it opens the export
+  // Export and Stats are action buttons, not tabs — clicking them opens a
   // dialog without switching the visible content of the sidebar.
   const [activeTab, setActiveTab] = useState<'animations' | 'models'>('animations');
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
 
   return (
     <aside className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
@@ -49,6 +51,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
         >
           Models
+        </button>
+        <button
+          onClick={() => setIsStatsOpen(true)}
+          className="flex-1 px-4 py-3 text-sm font-medium transition-colors text-gray-400 hover:text-white hover:bg-gray-750"
+          title="Library statistics"
+        >
+          Stats
         </button>
         <button
           onClick={() => onExport?.()}
@@ -84,6 +93,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <p className="mt-1">VRM, GLB, GLTF, FBX, BVH, VRMA</p>
         </div>
       </div>
+
+      <DatabaseStatsDialog isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} />
     </aside>
   );
 };

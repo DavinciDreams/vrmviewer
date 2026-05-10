@@ -1,100 +1,63 @@
 /**
  * Scene Manager
- * Manages Three.js scene, including initialization and model management
+ *
+ * Wraps the active `THREE.Scene` plus a model-id-keyed registry so other
+ * code can add / remove / look up models without prop-drilling
+ * `sceneRef.current` from VRMViewer. Mirrors the singleton pattern used by
+ * `cameraManager` and `lightingManager`: VRMViewer creates the scene, hands
+ * it to `initializeSceneManager(scene)` once the canvas mounts, and tears
+ * the singleton down on unmount.
  */
 
 import * as THREE from 'three';
 
-/**
- * Scene Manager Class
- */
 export class SceneManager {
   private scene: THREE.Scene;
-  private renderer: THREE.WebGLRenderer;
   private models: Map<string, THREE.Group> = new Map();
 
-  constructor(canvas?: HTMLCanvasElement) {
-    // Initialize scene
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x000000);
-
-    // Initialize renderer
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: true,
-    });
-
-    if (canvas) {
-      this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-      this.renderer.setPixelRatio(window.devicePixelRatio);
-    } else {
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
-      this.renderer.setPixelRatio(window.devicePixelRatio);
-    }
-
-    // Enable shadows
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    // Handle window resize
-    window.addEventListener('resize', this.handleResize);
+  constructor(scene: THREE.Scene) {
+    this.scene = scene;
   }
 
   /**
-   * Get scene
+   * Get the wrapped scene.
    */
   getScene(): THREE.Scene {
     return this.scene;
   }
 
   /**
-   * Get renderer
-   */
-  getRenderer(): THREE.WebGLRenderer {
-    return this.renderer;
-  }
-
-  /**
-   * Add model to scene
+   * Add a model to the scene under the given id. If a model with that id
+   * already exists it is removed first.
    */
   addModel(id: string, model: THREE.Group): void {
-    // Remove existing model with same ID
     this.removeModel(id);
-
-    // Add new model
     this.models.set(id, model);
     this.scene.add(model);
   }
 
   /**
-   * Remove model from scene
+   * Remove a model by id. No-op if the id is not registered.
    */
   removeModel(id: string): void {
     const model = this.models.get(id);
-    
     if (model) {
       this.scene.remove(model);
       this.models.delete(id);
     }
   }
 
-  /**
-   * Get model by ID
-   */
   getModel(id: string): THREE.Group | undefined {
     return this.models.get(id);
   }
 
-  /**
-   * Get all models
-   */
   getAllModels(): Map<string, THREE.Group> {
     return new Map(this.models);
   }
 
   /**
-   * Clear all models from scene
+   * Remove every registered model from the scene. Lights and other
+   * non-model children are left intact so the viewer doesn't go black.
    */
   clearModels(): void {
     this.models.forEach((model) => {
@@ -104,42 +67,27 @@ export class SceneManager {
   }
 
   /**
-   * Update scene
-   */
-  update(camera?: THREE.Camera): void {
-    if (!camera) return;
-    this.renderer.render(this.scene, camera);
-  }
-
-  /**
-   * Handle window resize
-   */
-  private handleResize = (): void => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    
-    this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
-  }
-
-  /**
-   * Dispose scene and renderer
+   * Disposal — clears the registry but does NOT touch lights or other
+   * scene children. The caller (VRMViewer) owns the scene's lifetime.
    */
   dispose(): void {
     this.clearModels();
-    this.renderer.dispose();
-    
-    // Clear scene children
-    while (this.scene.children.length > 0) {
-      const object = this.scene.children[0];
-      this.scene.remove(object);
-    }
-    
-    window.removeEventListener('resize', this.handleResize);
   }
 }
 
-/**
- * Create singleton instance
- */
-export const sceneManager = new SceneManager();
+// Singleton — populated by `initializeSceneManager` from VRMViewer.
+export let sceneManager: SceneManager | null = null;
+
+export function initializeSceneManager(scene: THREE.Scene): SceneManager {
+  if (!sceneManager) {
+    sceneManager = new SceneManager(scene);
+  }
+  return sceneManager;
+}
+
+export function disposeSceneManager(): void {
+  if (sceneManager) {
+    sceneManager.dispose();
+    sceneManager = null;
+  }
+}
