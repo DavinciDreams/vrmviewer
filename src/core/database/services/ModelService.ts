@@ -11,8 +11,30 @@ import {
   DatabaseOperationResult,
   DatabaseQueryOptions,
   DatabaseQueryResult,
+  ExtractedModelMetadata,
+  NormalizedLicense,
 } from '../../../types/database.types';
 import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * Bundle produced by extractAllMetadata (ml-engineer's pipeline).
+ * Defined here so ModelService can reference it before that module merges.
+ */
+export interface ExtractedBundle {
+  extractedMetadata: ExtractedModelMetadata;
+  normalizedLicense: NormalizedLicense;
+  searchTokens: string[];
+  sha256: string;
+}
+
+/**
+ * Save result with dedup signalling. `wasDeduped` is true when the returned
+ * record is a pre-existing model that matched on sha256 — callers can surface
+ * a UI notice so the user understands why no new record appeared.
+ */
+export interface SaveModelResult extends DatabaseOperationResult<ModelRecord> {
+  wasDeduped?: boolean;
+}
 
 /**
  * Model Service
@@ -31,17 +53,62 @@ export class ModelService {
   }
 
   /**
-   * Save model with metadata
+   * Save model with metadata.
+   *
+   * @param model          - Core model fields (data, format, name, etc.)
+   * @param thumbnail      - Optional base64 thumbnail string.
+   * @param extractedBundle - Optional bundle from extractAllMetadata. When present,
+   *                          promoted fields (sha256, polyBucket, isHumanoid,
+   *                          humanoidBones, license, searchTokens) are merged onto
+   *                          the record before insert. A sha256-based dedup check
+   *                          is also performed unless skipDedup is true.
+   * @param skipDedup      - When true, skip the sha256 dedup check (default false).
    */
   async saveModel(
     model: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>,
-    thumbnail?: string
-  ): Promise<DatabaseOperationResult<ModelRecord>> {
+    thumbnail?: string,
+    extractedBundle?: ExtractedBundle,
+    skipDedup = false
+  ): Promise<SaveModelResult> {
     await this.initialize();
 
     try {
-      // Save model
-      const result = await this.repository.create(model);
+      // Build the record to insert, promoting extracted fields when available.
+      let recordToSave: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'> = { ...model };
+
+      if (extractedBundle) {
+        const { extractedMetadata, normalizedLicense, searchTokens, sha256 } = extractedBundle;
+
+        // Dedup: if we already have this exact file, return the existing record.
+        // findBySha256 is added by the data-engineer; guard for pre-merge builds.
+        if (!skipDedup && sha256 && typeof (this.repository as unknown as Record<string, unknown>).findBySha256 === 'function') {
+          const existing = await (this.repository as unknown as { findBySha256(h: string): Promise<DatabaseOperationResult<ModelRecord>> }).findBySha256(sha256);
+          if (existing.success && existing.data) {
+            console.info(
+              `[ModelService] Dedup: model with sha256 ${sha256} already exists as "${existing.data.name}" — skipping insert.`
+            );
+            return { success: true, data: existing.data, wasDeduped: true };
+          }
+        }
+
+        recordToSave = {
+          ...recordToSave,
+          extractedMetadata,
+          normalizedLicense,
+          searchTokens,
+          sha256,
+          polyBucket: extractedMetadata.geometry.polyBucket,
+          isHumanoid: extractedMetadata.rig.isHumanoid,
+          humanoidBones: extractedMetadata.rig.humanoidBonesPresent,
+          // Only override the top-level license if the extraction produced one.
+          ...(normalizedLicense.licenseName
+            ? { license: normalizedLicense.licenseName }
+            : {}),
+        };
+      }
+
+      // Insert record.
+      const result = await this.repository.create(recordToSave);
 
       if (!result.success || !result.data) {
         return result;

@@ -35,7 +35,12 @@ export interface UnifiedLoadResult {
       name: string;
       format: ModelFormat;
       type: ModelFileType;
+      [key: string]: unknown;
     };
+    /** Rich parsed output from the loader, preserved for the metadata pipeline. */
+    parsed?: unknown;
+    /** Original ArrayBuffer of the file, available for hashing without re-reading. */
+    arrayBuffer?: ArrayBuffer;
   };
   error?: LoaderError;
   warnings?: string[];
@@ -95,6 +100,8 @@ export class LoaderManager {
         default:
           throw new Error(`Unsupported format: ${format}`);
       }
+      // Note: loadFromURL does not surface an ArrayBuffer; arrayBuffer on data
+      // will be undefined in that case — callers must re-fetch if needed.
 
       this.updateProgress(options, 100, 100, 'COMPLETE');
 
@@ -129,33 +136,36 @@ export class LoaderManager {
 
       this.updateProgress(options, 0, 100, 'INITIALIZING');
 
+      // Read the buffer once so loaders and the pipeline can share it.
+      const arrayBuffer = await file.arrayBuffer();
+
       let result: UnifiedLoadResult;
 
       switch (format) {
         case 'vrm': {
           const vrmResult = await vrmLoader.loadFromFile(file, options);
-          result = this.convertVRMResult(vrmResult);
+          result = this.convertVRMResult(vrmResult, arrayBuffer);
           break;
         }
         case 'gltf':
         case 'glb': {
           const gltfResult = await gltfLoader.loadFromFile(file, options);
-          result = this.convertGLTFResult(gltfResult);
+          result = this.convertGLTFResult(gltfResult, arrayBuffer);
           break;
         }
         case 'fbx': {
           const fbxResult = await fbxLoader.loadFromFile(file, options);
-          result = this.convertFBXResult(fbxResult);
+          result = this.convertFBXResult(fbxResult, arrayBuffer);
           break;
         }
         case 'bvh': {
           const bvhResult = await bvhLoader.loadFromFile(file, options);
-          result = this.convertBVHResult(bvhResult);
+          result = this.convertBVHResult(bvhResult, arrayBuffer);
           break;
         }
         case 'vrma': {
           const vrmaResult = await vrmaLoader.loadFromFile(file, options);
-          result = this.convertVRMAResult(vrmaResult);
+          result = this.convertVRMAResult(vrmaResult, arrayBuffer);
           break;
         }
         default:
@@ -197,28 +207,28 @@ export class LoaderManager {
       switch (format) {
         case 'vrm': {
           const vrmResult = await vrmLoader.loadFromArrayBuffer(arrayBuffer, options);
-          result = this.convertVRMResult(vrmResult);
+          result = this.convertVRMResult(vrmResult, arrayBuffer);
           break;
         }
         case 'gltf':
         case 'glb': {
           const gltfResult = await gltfLoader.loadFromArrayBuffer(arrayBuffer, options);
-          result = this.convertGLTFResult(gltfResult);
+          result = this.convertGLTFResult(gltfResult, arrayBuffer);
           break;
         }
         case 'fbx': {
           const fbxResult = await fbxLoader.loadFromArrayBuffer(arrayBuffer, filename, options);
-          result = this.convertFBXResult(fbxResult);
+          result = this.convertFBXResult(fbxResult, arrayBuffer);
           break;
         }
         case 'bvh': {
           const bvhResult = await bvhLoader.loadFromArrayBuffer(arrayBuffer, options);
-          result = this.convertBVHResult(bvhResult);
+          result = this.convertBVHResult(bvhResult, arrayBuffer);
           break;
         }
         case 'vrma': {
           const vrmaResult = await vrmaLoader.loadFromArrayBuffer(arrayBuffer, options);
-          result = this.convertVRMAResult(vrmaResult);
+          result = this.convertVRMAResult(vrmaResult, arrayBuffer);
           break;
         }
         default:
@@ -269,7 +279,8 @@ export class LoaderManager {
    * Convert VRM result to unified result
    */
   private convertVRMResult(
-    result: { success: boolean; data?: { vrm: unknown; metadata: unknown; expressions: unknown; humanoid: unknown; firstPerson: unknown; scene: THREE.Group; skeleton: THREE.Skeleton } }
+    result: { success: boolean; data?: { vrm: unknown; metadata: unknown; expressions: unknown; humanoid: unknown; firstPerson: unknown; scene: THREE.Group; skeleton: THREE.Skeleton } },
+    arrayBuffer?: ArrayBuffer
   ): UnifiedLoadResult {
     if (!result.success || !result.data) {
       return {
@@ -289,6 +300,8 @@ export class LoaderManager {
           format: 'vrm',
           type: 'model',
         },
+        parsed: result.data,
+        arrayBuffer,
       },
     };
   }
@@ -297,7 +310,8 @@ export class LoaderManager {
    * Convert GLTF result to unified result
    */
   private convertGLTFResult(
-    result: { success: boolean; data?: { scene: THREE.Group; animations: THREE.AnimationClip[]; skeleton?: THREE.Skeleton; materials: THREE.Material[]; textures: THREE.Texture[] } }
+    result: { success: boolean; data?: { scene: THREE.Group; animations: THREE.AnimationClip[]; skeleton?: THREE.Skeleton; materials: THREE.Material[]; textures: THREE.Texture[] } },
+    arrayBuffer?: ArrayBuffer
   ): UnifiedLoadResult {
     if (!result.success || !result.data) {
       return {
@@ -318,6 +332,8 @@ export class LoaderManager {
           format: 'gltf',
           type: 'model',
         },
+        parsed: result.data,
+        arrayBuffer,
       },
     };
   }
@@ -327,7 +343,8 @@ export class LoaderManager {
    * Enhanced to support morph targets and blend shapes
    */
   private convertFBXResult(
-    result: { success: boolean; data?: { scene: THREE.Group; animations: THREE.AnimationClip[]; skeleton?: THREE.Skeleton; materials: THREE.Material[]; textures: THREE.Texture[]; morphTargets?: Map<string, THREE.MorphTarget[]>; blendShapes?: Map<string, THREE.MorphTarget[]>; metadata?: { version?: number; author?: string; creationDate?: string; application?: string; unitScale?: number; upAxis?: 'X' | 'Y' | 'Z'; frontAxis?: 'X' | 'Y' | 'Z' } } }
+    result: { success: boolean; data?: { scene: THREE.Group; animations: THREE.AnimationClip[]; skeleton?: THREE.Skeleton; materials: THREE.Material[]; textures: THREE.Texture[]; morphTargets?: Map<string, THREE.MorphTarget[]>; blendShapes?: Map<string, THREE.MorphTarget[]>; metadata?: { version?: number; author?: string; creationDate?: string; application?: string; unitScale?: number; upAxis?: 'X' | 'Y' | 'Z'; frontAxis?: 'X' | 'Y' | 'Z' } } },
+    arrayBuffer?: ArrayBuffer
   ): UnifiedLoadResult {
     if (!result.success || !result.data) {
       return {
@@ -364,6 +381,8 @@ export class LoaderManager {
         model: scene,
         animation: animations[0],
         metadata: enhancedMetadata,
+        parsed: result.data,
+        arrayBuffer,
       },
     };
   }
@@ -372,7 +391,8 @@ export class LoaderManager {
    * Convert BVH result to unified result
    */
   private convertBVHResult(
-    result: { success: boolean; data?: { scene: THREE.Group; animation: THREE.AnimationClip; skeleton: THREE.Skeleton; hierarchy: unknown[] } }
+    result: { success: boolean; data?: { scene: THREE.Group; animation: THREE.AnimationClip; skeleton: THREE.Skeleton; hierarchy: unknown[] } },
+    arrayBuffer?: ArrayBuffer
   ): UnifiedLoadResult {
     if (!result.success || !result.data) {
       return {
@@ -393,6 +413,8 @@ export class LoaderManager {
           format: 'bvh',
           type: 'animation',
         },
+        parsed: result.data,
+        arrayBuffer,
       },
     };
   }
@@ -401,7 +423,8 @@ export class LoaderManager {
    * Convert VRMA result to unified result
    */
   private convertVRMAResult(
-    result: { success: boolean; data?: { animation: THREE.AnimationClip; metadata: { name: string; version: string; author?: string; license?: string; contactInformation?: string; reference?: string; thumbnail?: string } } }
+    result: { success: boolean; data?: { animation: THREE.AnimationClip; metadata: { name: string; version: string; author?: string; license?: string; contactInformation?: string; reference?: string; thumbnail?: string } } },
+    arrayBuffer?: ArrayBuffer
   ): UnifiedLoadResult {
     if (!result.success || !result.data) {
       return {
@@ -421,6 +444,8 @@ export class LoaderManager {
           format: 'vrma',
           type: 'animation',
         },
+        parsed: result.data,
+        arrayBuffer,
       },
     };
   }

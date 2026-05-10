@@ -11,6 +11,14 @@ export interface ModelData {
   description?: string;
   thumbnail?: string;
   createdAt: string;
+  /** Promoted fields surfaced by extraction pipeline. */
+  triangleCount?: number;
+  boneCount?: number;
+  license?: string;
+  hasExtractedMetadata?: boolean;
+  format?: string;
+  polyBucket?: 'low' | 'mid' | 'high' | 'ultra';
+  isHumanoid?: boolean;
 }
 
 export interface ModelLibraryProps {
@@ -32,20 +40,36 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteMessage, setDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // --- Filter chip state ---
+  const [filterFormat, setFilterFormat] = useState<string>('');
+  const [filterPolyBucket, setFilterPolyBucket] = useState<'low' | 'mid' | 'high' | 'ultra' | ''>('');
+  const [filterIsHumanoid, setFilterIsHumanoid] = useState<boolean | null>(null);
   
   // Thumbnail service
   const thumbnailService = getThumbnailService();
 
-  // Fetch models from database. Resolves setState in async continuations
-  // (legitimate data-fetching pattern; the new react-hooks/set-state-in-effect
-  // rule still flags it because the call originates inside an effect).
+  // Fetch models from database. Uses the indexed `filter` path when any
+  // filter chip is active (so Dexie's compound indexes do the work),
+  // otherwise falls back to `getAll`.
   const fetchModels = useCallback(async () => {
     if (!isInitialized) return;
 
     try {
       setIsLoading(true);
       setError(null);
-      const result = await models.getAll();
+
+      const hasFilter =
+        !!filterFormat || !!filterPolyBucket || filterIsHumanoid !== null || !!searchQuery;
+
+      const result = hasFilter
+        ? await models.filter({
+            ...(filterFormat ? { format: filterFormat } : {}),
+            ...(filterPolyBucket ? { polyBucket: filterPolyBucket } : {}),
+            ...(filterIsHumanoid !== null ? { isHumanoid: filterIsHumanoid } : {}),
+            ...(searchQuery ? { search: searchQuery } : {}),
+          })
+        : await models.getAll();
 
       // Handle DatabaseOperationResult type - check if result has data property
       const records = 'data' in result && result.data ? result.data : null;
@@ -57,6 +81,13 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           description: record.description,
           thumbnail: record.thumbnail,
           createdAt: record.createdAt.toISOString(),
+          triangleCount: record.extractedMetadata?.geometry.triangleCount,
+          boneCount: record.extractedMetadata?.rig.boneCount,
+          license: record.license,
+          hasExtractedMetadata: !!record.extractedMetadata,
+          format: record.format,
+          polyBucket: record.polyBucket,
+          isHumanoid: record.isHumanoid,
         }));
         setModelList(transformedData);
 
@@ -76,7 +107,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isInitialized, models, thumbnailService]);
+  }, [isInitialized, models, thumbnailService, filterFormat, filterPolyBucket, filterIsHumanoid, searchQuery]);
 
   useEffect(() => {
     // Canonical data-fetching effect: setState calls happen after async work,
@@ -85,21 +116,16 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     fetchModels();
   }, [fetchModels]);
 
-  // Merge thumbnails into the displayed list at render time so we don't have to
-  // re-sync separate state via an effect when thumbnails resolve.
+  // Filtering happens server-side via the indexed `models.filter()` path in
+  // fetchModels. Here we only merge the resolved thumbnail data-URLs onto
+  // each record at render time.
   const filteredModels = useMemo(
     () =>
-      modelList
-        .filter(
-          (model) =>
-            model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            model.description?.toLowerCase().includes(searchQuery.toLowerCase()),
-        )
-        .map((model) => ({
-          ...model,
-          thumbnail: thumbnails[model.id] || model.thumbnail,
-        })),
-    [modelList, thumbnails, searchQuery],
+      modelList.map((model) => ({
+        ...model,
+        thumbnail: thumbnails[model.id] || model.thumbnail,
+      })),
+    [modelList, thumbnails],
   );
 
   const handleEdit = (id: string) => {
@@ -171,6 +197,67 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search models..."
         />
+      </div>
+
+      {/* Filter Chips */}
+      <div className="px-4 py-2 border-b border-gray-700 flex flex-wrap gap-2">
+        {/* Format filter */}
+        {(['vrm', 'glb', 'gltf', 'fbx'] as const).map((fmt) => (
+          <button
+            key={fmt}
+            onClick={() => setFilterFormat(filterFormat === fmt ? '' : fmt)}
+            className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+              filterFormat === fmt
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'
+            }`}
+          >
+            {fmt.toUpperCase()}
+          </button>
+        ))}
+
+        {/* Poly bucket filter */}
+        {(['low', 'mid', 'high', 'ultra'] as const).map((bucket) => (
+          <button
+            key={bucket}
+            onClick={() => setFilterPolyBucket(filterPolyBucket === bucket ? '' : bucket)}
+            className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+              filterPolyBucket === bucket
+                ? 'bg-purple-600 border-purple-500 text-white'
+                : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'
+            }`}
+          >
+            {bucket}
+          </button>
+        ))}
+
+        {/* Humanoid filter */}
+        <button
+          onClick={() =>
+            setFilterIsHumanoid(filterIsHumanoid === true ? null : true)
+          }
+          className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+            filterIsHumanoid === true
+              ? 'bg-green-600 border-green-500 text-white'
+              : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'
+          }`}
+        >
+          humanoid
+        </button>
+
+        {/* Clear all filters */}
+        {(filterFormat || filterPolyBucket || filterIsHumanoid !== null) && (
+          <button
+            onClick={() => {
+              setFilterFormat('');
+              setFilterPolyBucket('');
+              setFilterIsHumanoid(null);
+            }}
+            className="px-2 py-0.5 rounded-full text-xs font-medium border border-red-700/60 text-red-400 hover:border-red-500 bg-gray-800 transition-colors"
+          >
+            clear filters
+          </button>
+        )}
       </div>
       
       {/* Model Grid */}

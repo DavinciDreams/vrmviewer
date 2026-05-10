@@ -5,8 +5,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { getAnimationService } from '../core/database/services/AnimationService';
-import { getModelService } from '../core/database/services/ModelService';
+import { getModelService, type ExtractedBundle } from '../core/database/services/ModelService';
 import { getDatabaseService } from '../core/database/DatabaseService';
+import { runBackfillIfNeeded } from '../core/metadata/backfill';
 import {
   AnimationRecord,
   ModelRecord,
@@ -38,6 +39,11 @@ export function useDatabase() {
         setAnimationService(animSvc);
         setModelService(modSvc);
         setIsInitialized(true);
+
+        // Fire-and-forget background backfill — never blocks the UI.
+        runBackfillIfNeeded().catch((err) =>
+          console.warn('[useDatabase] Backfill error (non-fatal):', err)
+        );
       } catch (error) {
         console.error('Failed to initialize database:', error);
       }
@@ -226,12 +232,14 @@ export function useDatabase() {
    */
   const saveModel = async (
     model: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>,
-    thumbnail?: string
+    thumbnail?: string,
+    extractedBundle?: ExtractedBundle,
+    skipDedup?: boolean
   ) => {
     const svc = modelService;
     if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Model service not initialized' } };
     await svc.initialize();
-    return await svc.saveModel(model, thumbnail);
+    return await svc.saveModel(model, thumbnail, extractedBundle, skipDedup);
   };
 
   /**

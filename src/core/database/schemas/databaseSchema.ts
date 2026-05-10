@@ -39,6 +39,19 @@ export class VRMViewerDatabase extends Dexie {
     this.version(2).stores({
       persistedState: '&key, updatedAt',
     });
+
+    // Version 3: add promoted/indexed fields for faceted search and dedup.
+    // Existing records are NOT mutated — new index columns will be undefined on
+    // old records and skipped by index lookups. The backfill migration (separate
+    // agent) will populate sha256, license, polyBucket, isHumanoid, searchTokens,
+    // and humanoidBones. No .upgrade() callback is needed for additive indexes.
+    this.version(3).stores({
+      models:
+        '++id, uuid, name, displayName, description, category, format, version, ' +
+        'createdAt, updatedAt, size, sha256, author, license, polyBucket, isHumanoid, ' +
+        '[format+createdAt], [category+format], [format+polyBucket], ' +
+        '*tags, *searchTokens, *humanoidBones',
+    });
   }
 }
 
@@ -84,7 +97,7 @@ export async function deleteDatabase(): Promise<void> {
  * Database schema versions
  */
 export const SCHEMA_VERSIONS = {
-  CURRENT: 2,
+  CURRENT: 3,
   VERSIONS: [
     {
       version: 1,
@@ -94,6 +107,13 @@ export const SCHEMA_VERSIONS = {
       version: 2,
       description: 'Add persistedState key/value table for Zustand persist payloads',
     },
+    {
+      version: 3,
+      description:
+        'Add promoted indexes (sha256, license, polyBucket, isHumanoid) and ' +
+        'multiEntry indexes (searchTokens, humanoidBones) plus compound indexes ' +
+        '([format+createdAt], [category+format], [format+polyBucket]) for faceted search',
+    },
   ],
 };
 
@@ -102,7 +122,7 @@ export const SCHEMA_VERSIONS = {
  */
 export const DATABASE_CONFIG = {
   NAME: 'VRMViewerDB',
-  VERSION: 2,
+  VERSION: 3,
   MAX_SIZE: 500 * 1024 * 1024, // 500MB default
   CHUNK_SIZE: 1024 * 1024, // 1MB chunks for large files
 };
@@ -138,7 +158,18 @@ export const MODEL_INDEXES = {
   CREATED_AT: 'createdAt',
   UPDATED_AT: 'updatedAt',
   SIZE: 'size',
+  AUTHOR: 'author',
   TAGS: '*tags',
+  // v3 additions
+  SHA256: 'sha256',
+  LICENSE: 'license',
+  POLY_BUCKET: 'polyBucket',
+  IS_HUMANOID: 'isHumanoid',
+  SEARCH_TOKENS: '*searchTokens',
+  HUMANOID_BONES: '*humanoidBones',
+  FORMAT_CREATED_AT: '[format+createdAt]',
+  CATEGORY_FORMAT: '[category+format]',
+  FORMAT_POLY_BUCKET: '[format+polyBucket]',
 };
 
 /**

@@ -8,6 +8,11 @@ export interface ModelData {
   description?: string;
   thumbnail?: string;
   createdAt: string;
+  /** Populated by extraction pipeline. */
+  triangleCount?: number;
+  boneCount?: number;
+  license?: string;
+  hasExtractedMetadata?: boolean;
 }
 
 export interface ModelCardProps {
@@ -30,6 +35,9 @@ export const ModelCard: React.FC<ModelCardProps> = ({
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
+
+  const formatNumber = (n: number) =>
+    n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
   const handleDeleteClick = () => {
     setIsDeleteDialogOpen(true);
@@ -87,7 +95,31 @@ export const ModelCard: React.FC<ModelCardProps> = ({
           </p>
         )}
         <p className="text-xs text-gray-500 mt-2">{formatDate(model.createdAt)}</p>
-        
+
+        {/* Metadata badges */}
+        <div className="flex flex-wrap gap-1 mt-2">
+          {model.hasExtractedMetadata === false && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-700 text-gray-400 border border-gray-600">
+              metadata pending
+            </span>
+          )}
+          {model.triangleCount !== undefined && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-900/60 text-blue-300 border border-blue-700/50" title="Triangle count">
+              {formatNumber(model.triangleCount)} tris
+            </span>
+          )}
+          {model.boneCount !== undefined && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-900/60 text-purple-300 border border-purple-700/50" title="Bone count">
+              {model.boneCount} bones
+            </span>
+          )}
+          {model.license && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-900/60 text-green-300 border border-green-700/50" title="License">
+              {model.license}
+            </span>
+          )}
+        </div>
+
         {/* Actions */}
         <div className="flex items-center space-x-2 mt-3">
           <Button

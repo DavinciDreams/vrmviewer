@@ -13,7 +13,8 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "extract-metadata": "node scripts/extract-metadata.mjs"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^2.1.0",

@@ -214,9 +214,12 @@ export class VRMLoader {
             }
           : undefined,
         allowedUserName: (metaUnknown as { allowedUserName?: string }).allowedUserName,
-        violentUsageName: (metaUnknown as { violentUsageName?: string }).violentUsageName,
-        sexualUsageName: (metaUnknown as { sexualUsageName?: string }).sexualUsageName,
-        commercialUsageName: (metaUnknown as { commercialUsageName?: string }).commercialUsageName,
+        // VRM 0.x spec uses the typo'd field names "violentUssageName", "sexualUssageName",
+        // "commercialUssageName" (double-S). @pixiv/three-vrm surfaces them with the typos.
+        // We map them onto our (corrected) public field names.
+        violentUsageName: (metaUnknown as { violentUssageName?: string }).violentUssageName,
+        sexualUsageName: (metaUnknown as { sexualUssageName?: string }).sexualUssageName,
+        commercialUsageName: (metaUnknown as { commercialUssageName?: string }).commercialUssageName,
         politicalOrReligiousUsageName: (metaUnknown as { politicalOrReligiousUsageName?: string }).politicalOrReligiousUsageName,
         antisocialOrHateUsageName: (metaUnknown as { antisocialOrHateUsageName?: string }).antisocialOrHateUsageName,
         creditNotation: (metaUnknown as { creditNotation?: string }).creditNotation,
@@ -226,7 +229,61 @@ export class VRMLoader {
       };
     }
 
-    // VRM 1.0 metadata
+    // VRM 1.0 metadata — field names differ from 0.x; surface them so they flow downstream.
+    // commercialUsage / allowExcessivelyViolentUsage etc. are mapped here into the closest
+    // VRMMetadata fields; normalizeLicense() in the extraction pipeline handles the full mapping.
+    const vrm1 = metaUnknown as {
+      commercialUsage?: string;
+      modification?: string;
+      creditNotation?: string;
+      allowedUserName?: string;
+      allowExcessivelyViolentUsage?: boolean;
+      allowExcessivelySexualUsage?: boolean;
+      allowPoliticalOrReligiousUsage?: boolean;
+      allowAntisocialOrHateUsage?: boolean;
+      allowRedistribution?: boolean;
+      licenseUrl?: string;
+      otherLicenseUrl?: string;
+    };
+    if (
+      vrm1.commercialUsage !== undefined ||
+      vrm1.modification !== undefined ||
+      vrm1.allowExcessivelyViolentUsage !== undefined
+    ) {
+      return {
+        ...baseMetadata,
+        license: vrm1.licenseUrl
+          ? { type: 'custom' as const, url: vrm1.licenseUrl }
+          : undefined,
+        allowedUserName: vrm1.allowedUserName,
+        commercialUsageName: vrm1.commercialUsage,
+        modification: vrm1.modification,
+        creditNotation: vrm1.creditNotation,
+        allowRedistribution:
+          vrm1.allowRedistribution !== undefined
+            ? String(vrm1.allowRedistribution)
+            : undefined,
+        violentUsageName:
+          vrm1.allowExcessivelyViolentUsage !== undefined
+            ? vrm1.allowExcessivelyViolentUsage ? 'Allow' : 'Disallow'
+            : undefined,
+        sexualUsageName:
+          vrm1.allowExcessivelySexualUsage !== undefined
+            ? vrm1.allowExcessivelySexualUsage ? 'Allow' : 'Disallow'
+            : undefined,
+        politicalOrReligiousUsageName:
+          vrm1.allowPoliticalOrReligiousUsage !== undefined
+            ? vrm1.allowPoliticalOrReligiousUsage ? 'Allow' : 'Disallow'
+            : undefined,
+        antisocialOrHateUsageName:
+          vrm1.allowAntisocialOrHateUsage !== undefined
+            ? vrm1.allowAntisocialOrHateUsage ? 'Allow' : 'Disallow'
+            : undefined,
+        otherLicenseUrl: vrm1.otherLicenseUrl,
+      };
+    }
+
+    // Fallback: return base metadata for models with no recognized license fields
     return baseMetadata;
   }
 

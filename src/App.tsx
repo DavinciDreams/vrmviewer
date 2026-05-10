@@ -43,7 +43,7 @@ function hasSuccessAndData<T>(result: unknown): result is { success: boolean; da
 
 function App() {
   // VRM
-  const { currentModel, isLoading, error, metadata, loadModelFromFile, clearCurrentModel } = useVRM();
+  const { currentModel, isLoading, error, metadata, extractedBundle, loadModelFromFile, clearCurrentModel } = useVRM();
   // Playback
   const { play, pause, stop, seek, setSpeed, toggleLoop } = usePlayback();
   // Animation
@@ -186,27 +186,39 @@ function App() {
         existingNames
       );
       
-      // Save model to database
-      const result = await models.save({
-        name: modelName,
-        displayName: modelName,
-        description: '',
-        category: '',
-        tags: [],
-        format: getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx',
-        version: '1.0',
-        author: '',
-        license: '',
-        thumbnail: '',
-        data: unsavedModelData,
-        size: unsavedModelData.byteLength,
-      });
+      // Save model to database, passing the extracted bundle when available.
+      const result = await models.save(
+        {
+          name: modelName,
+          displayName: modelName,
+          description: '',
+          category: '',
+          tags: [],
+          format: getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx',
+          version: '1.0',
+          author: '',
+          license: '',
+          thumbnail: '',
+          data: unsavedModelData,
+          size: unsavedModelData.byteLength,
+        },
+        undefined,       // thumbnail handled separately below
+        extractedBundle ?? undefined
+      );
       
       if (!hasSuccessAndData<{ uuid: string }>(result)) {
         console.error('Failed to save model:', result.error);
         return;
       }
-      
+
+      // If the save was deduped (sha256 matched an existing model), surface
+      // that fact to the user so they don't wonder why no new entry appeared.
+      if ((result as { wasDeduped?: boolean }).wasDeduped) {
+        console.info(
+          `[App] This file matches an existing library model — opened the existing entry instead of creating a duplicate.`
+        );
+      }
+
       const modelUuid = result.data.uuid;
       setCurrentModelUuid(modelUuid);
       
@@ -271,7 +283,7 @@ function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models, thumbnailService]);
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models, thumbnailService, extractedBundle]);
   
   /**
    * Handle animation save

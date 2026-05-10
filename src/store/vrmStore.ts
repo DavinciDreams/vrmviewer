@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { VRMModel } from '../types/vrm.types';
+import type { ExtractedBundle } from '../core/database/services/ModelService';
 
 /**
  * VRM Store State
@@ -19,6 +20,8 @@ interface VRMStoreState {
     version: string;
     author: string;
   } | null;
+  /** Extracted metadata bundle, populated after successful load. Cleared on clearModel. */
+  extractedBundle: ExtractedBundle | null;
 }
 
 /**
@@ -30,6 +33,7 @@ interface VRMStoreActions {
   setError: (error: string | null) => void;
   clearError: () => void;
   setMetadata: (metadata: VRMStoreState['metadata']) => void;
+  setExtractedBundle: (bundle: ExtractedBundle | null) => void;
   clearModel: () => void;
 }
 
@@ -44,6 +48,7 @@ export const useVRMStore = create<VRMStoreState & VRMStoreActions>()(
       isLoading: false,
       error: null,
       metadata: null,
+      extractedBundle: null,
 
       // Actions
       setModel: (model) =>
@@ -71,10 +76,16 @@ export const useVRMStore = create<VRMStoreState & VRMStoreActions>()(
           metadata,
         }),
 
+      setExtractedBundle: (bundle) =>
+        set({
+          extractedBundle: bundle,
+        }),
+
       clearModel: () =>
         set({
           currentModel: null,
           metadata: null,
+          extractedBundle: null,
         }),
     }),
     {
