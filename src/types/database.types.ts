@@ -29,8 +29,82 @@ export interface AnimationRecord {
 }
 
 /**
+ * Extracted Model Metadata
+ *
+ * Rich, format-agnostic metadata produced by the extraction pipeline
+ * (`src/core/metadata/`). Stored as a JSON blob on the model record;
+ * callers can opt in to populating it at save time by passing an
+ * ExtractedBundle to `ModelService.saveModel` (not yet wired into the
+ * default save path — invoke directly or via `scripts/extract-metadata.mjs`).
+ */
+export interface ExtractedModelMetadata {
+  schemaVersion: 1;
+  extractedAt: Date;
+  extractorVersion: string;
+  geometry: {
+    triangleCount: number;
+    vertexCount: number;
+    meshCount: number;
+    boundingBox: { min: [number, number, number]; max: [number, number, number] };
+    height: number;
+    polyBucket: 'low' | 'mid' | 'high' | 'ultra';
+  };
+  rig: {
+    boneCount: number;
+    isHumanoid: boolean;
+    /** VRMHumanBoneName values kept as string[] to avoid cross-type coupling. */
+    humanoidBonesPresent: string[];
+    humanoidCompleteness: number;
+    expressionCount: number;
+    expressionPresets: string[];
+    customExpressions: string[];
+    blendShapeCount: number;
+  };
+  materials: {
+    materialCount: number;
+    textureCount: number;
+    totalTextureBytes: number;
+    materialTypes: { mtoon: number; pbr: number; basic: number; other: number };
+    hasTransparency: boolean;
+    largestTextureResolution: [number, number];
+  };
+  hashes: {
+    sha256: string;
+    pHash?: string;
+  };
+  sourceFormat: {
+    format: string;
+    version: string;
+    hasAnimations: boolean;
+    animationCount: number;
+  };
+}
+
+/**
+ * Normalized License — works for both VRM 0.x and VRM 1.0 license schemas.
+ */
+export interface NormalizedLicense {
+  licenseName?: string;
+  licenseUrl?: string;
+  otherLicenseUrl?: string;
+  allowedUserName?: 'OnlyAuthor' | 'ExplicitlyLicensedPerson' | 'Everyone';
+  commercialUsage?: 'Disallow' | 'Allow' | 'PersonalNonProfit' | 'PersonalProfit' | 'Corporation';
+  violentUsage?: 'Disallow' | 'Allow';
+  sexualUsage?: 'Disallow' | 'Allow';
+  politicalOrReligiousUsage?: 'Disallow' | 'Allow';
+  antisocialOrHateUsage?: 'Disallow' | 'Allow';
+  modification?: 'Prohibited' | 'AllowModification' | 'AllowModificationRedistribution';
+  creditNotation?: 'Required' | 'Unnecessary';
+  allowRedistribution?: 'Disallow' | 'Allow';
+}
+
+/**
  * Model Record
- * Represents a saved model in the database
+ * Represents a saved model in the database.
+ *
+ * The bottom block of optional fields is populated by the extraction
+ * pipeline (`src/core/metadata/`). They are all optional so records
+ * predating the pipeline still load.
  */
 export interface ModelRecord {
   id?: number;
@@ -50,6 +124,23 @@ export interface ModelRecord {
   createdAt: Date;
   updatedAt: Date;
   size: number;
+
+  // --- Extraction-pipeline fields (all optional) ---
+
+  /** SHA-256 of the raw model file. Used for dedup. */
+  sha256?: string;
+  /** Polygon complexity bucket; suitable for faceted filtering. */
+  polyBucket?: 'low' | 'mid' | 'high' | 'ultra';
+  /** Whether the rig satisfies the VRM humanoid spec. */
+  isHumanoid?: boolean;
+  /** VRMHumanBoneName values present in the rig. */
+  humanoidBones?: string[];
+  /** Tokenized search terms for free-text search. */
+  searchTokens?: string[];
+  /** Full extraction result blob (not indexed). */
+  extractedMetadata?: ExtractedModelMetadata;
+  /** Normalized license data from VRM 0.x or 1.0 metadata. */
+  normalizedLicense?: NormalizedLicense;
 }
 
 /**
@@ -120,6 +211,16 @@ export interface DatabaseQueryOptions {
   format?: string;
   startDate?: Date;
   endDate?: Date;
+
+  // Extraction-pipeline-driven faceted filters (all optional).
+  polyBucket?: 'low' | 'mid' | 'high' | 'ultra';
+  isHumanoid?: boolean;
+  license?: string;
+  /**
+   * When true, restrict to records where normalizedLicense.commercialUsage
+   * indicates commercial use is permitted.
+   */
+  hasCommercialUse?: boolean;
 }
 
 /**
