@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { getAnimationService } from '../core/database/services/AnimationService';
-import { getModelService } from '../core/database/services/ModelService';
+import { getModelService, ExtractedBundle } from '../core/database/services/ModelService';
 import { getDatabaseService } from '../core/database/DatabaseService';
 import {
   AnimationRecord,
@@ -232,16 +232,21 @@ export function useDatabase() {
   };
 
   /**
-   * Save model
+   * Save model. Optional `extractedBundle` forwards the metadata-pipeline
+   * output so the service can populate the promoted index fields and run a
+   * sha256-based dedup check. `skipDedup` lets callers force-insert a known
+   * duplicate (e.g. on user override).
    */
   const saveModel = async (
     model: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>,
-    thumbnail?: string
+    thumbnail?: string,
+    extractedBundle?: ExtractedBundle,
+    skipDedup = false,
   ) => {
     const svc = modelService;
     if (!svc) return { success: false, error: { type: 'UNKNOWN', message: 'Model service not initialized' } };
     await svc.initialize();
-    return await svc.saveModel(model, thumbnail);
+    return await svc.saveModel(model, thumbnail, extractedBundle, skipDedup);
   };
 
   /**

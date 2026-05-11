@@ -11,8 +11,31 @@ import {
   DatabaseOperationResult,
   DatabaseQueryOptions,
   DatabaseQueryResult,
+  ExtractedModelMetadata,
+  NormalizedLicense,
 } from '../../../types/database.types';
 import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * Bundle produced by `runMetadataPipeline` (`src/core/metadata/MetadataPipeline.ts`).
+ * Callers run the pipeline themselves (it needs a live three.js scene + VRM
+ * instance which the service doesn't have) and pass the result here.
+ */
+export interface ExtractedBundle {
+  extractedMetadata: ExtractedModelMetadata;
+  normalizedLicense: NormalizedLicense;
+  searchTokens: string[];
+  sha256: string;
+}
+
+/**
+ * Save result with dedup signalling. `wasDeduped` is true when the returned
+ * record is a pre-existing model that matched on sha256 — callers can surface
+ * a UI notice so the user understands why no new record appeared.
+ */
+export interface SaveModelResult extends DatabaseOperationResult<ModelRecord> {
+  wasDeduped?: boolean;
+}
 
 /**
  * Model Service
@@ -31,17 +54,76 @@ export class ModelService {
   }
 
   /**
-   * Save model with metadata
+   * Save a model.
+   *
+   * @param model           Core model fields (data buffer, format, name, etc.).
+   * @param thumbnail       Optional base64 thumbnail string.
+   * @param extractedBundle Optional bundle from `runMetadataPipeline`. When
+   *                        present, the promoted fields (sha256, polyBucket,
+   *                        isHumanoid, humanoidBones, searchTokens) plus the
+   *                        full `extractedMetadata` + `normalizedLicense`
+   *                        blobs are merged onto the record before insert.
+   *                        A sha256-based dedup check is performed against
+   *                        the existing library unless `skipDedup` is true.
+   * @param skipDedup       Set true to bypass the sha256 dedup check (e.g.
+   *                        when intentionally importing a duplicate as a
+   *                        copy). Defaults to false.
    */
   async saveModel(
     model: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'>,
-    thumbnail?: string
-  ): Promise<DatabaseOperationResult<ModelRecord>> {
+    thumbnail?: string,
+    extractedBundle?: ExtractedBundle,
+    skipDedup = false,
+  ): Promise<SaveModelResult> {
     await this.initialize();
 
     try {
+      // Build the record to insert, merging extracted fields when available.
+      let recordToSave: Omit<ModelRecord, 'id' | 'uuid' | 'createdAt' | 'updatedAt'> = {
+        ...model,
+      };
+
+      if (extractedBundle) {
+        const { extractedMetadata, normalizedLicense, searchTokens, sha256 } = extractedBundle;
+
+        // Dedup: a matching sha256 means we already have this exact file.
+        // Return the existing record with `wasDeduped: true` so the UI can
+        // tell the user why nothing new appeared in the library.
+        if (!skipDedup && sha256) {
+          const existing = await this.repository.findBySha256(sha256);
+          if (existing.success && existing.data) {
+            console.info(
+              `[ModelService] Dedup: model with sha256 ${sha256} already exists as "${existing.data.name}" — skipping insert.`,
+            );
+            // existing.data is a ModelRecordSummary (blob-free). Cast to
+            // ModelRecord for the result shape; data is `undefined` but the
+            // caller is expected to look it back up via getByUuid when it
+            // needs the bytes.
+            return {
+              success: true,
+              data: existing.data as unknown as ModelRecord,
+              wasDeduped: true,
+            };
+          }
+        }
+
+        recordToSave = {
+          ...recordToSave,
+          sha256,
+          searchTokens,
+          polyBucket: extractedMetadata.geometry.polyBucket,
+          isHumanoid: extractedMetadata.rig.isHumanoid,
+          humanoidBones: extractedMetadata.rig.humanoidBonesPresent,
+          extractedMetadata,
+          normalizedLicense,
+          // license is a top-level indexed field too — promote the normalized
+          // license name there if the caller didn't already set it.
+          license: recordToSave.license ?? normalizedLicense.licenseName,
+        };
+      }
+
       // Save model
-      const result = await this.repository.create(model);
+      const result = await this.repository.create(recordToSave);
 
       if (!result.success || !result.data) {
         return result;
