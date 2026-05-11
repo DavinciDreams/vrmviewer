@@ -10,7 +10,7 @@
 
 import { useCallback, useState } from 'react';
 import { useAnimationStore } from '../store/animationStore';
-import { ExpressionPresetName } from '../constants/blendShapes';
+import { ExpressionPresetName, LipSyncVisemeName } from '../constants/blendShapes';
 import { BlendShapeManager } from '../core/three/animation/BlendShapeManager';
 
 const DEFAULT_BLEND_SHAPES = [
@@ -37,12 +37,19 @@ export interface BlendShapeControls {
   currentBlendShapes: Record<string, number>;
   currentExpression: ExpressionPresetName | null;
   expressionWeight: number;
+  currentLipSync: LipSyncVisemeName | null;
+  lipSyncWeight: number;
+  eyeBlink: { left: number; right: number };
 
   // Actions
   setBlendShape: (name: string, value: number) => void;
   setBlendShapes: (blendShapes: Record<string, number>) => void;
   setExpression: (preset: ExpressionPresetName, weight?: number) => void;
   clearExpression: () => void;
+  setLipSync: (viseme: LipSyncVisemeName, weight?: number) => void;
+  clearLipSync: () => void;
+  setEyeBlink: (left: number, right: number) => void;
+  setBothEyesBlink: (value: number) => void;
   resetBlendShapes: () => void;
   getBlendShape: (name: string) => number;
   hasBlendShape: (name: string) => boolean;
@@ -55,6 +62,9 @@ export function useBlendShapes(): BlendShapeControls {
   const [currentBlendShapes, setCurrentBlendShapes] = useState<Record<string, number>>({});
   const [currentExpression, setCurrentExpression] = useState<ExpressionPresetName | null>(null);
   const [expressionWeight, setExpressionWeight] = useState<number>(1);
+  const [currentLipSync, setCurrentLipSync] = useState<LipSyncVisemeName | null>(null);
+  const [lipSyncWeight, setLipSyncWeight] = useState<number>(1);
+  const [eyeBlink, setEyeBlinkState] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
 
   // Sync local React state with manager state whenever the manager identity
   // changes (e.g. a new model is loaded). Tracking the last-seen manager via
@@ -117,11 +127,61 @@ export function useBlendShapes(): BlendShapeControls {
     setCurrentBlendShapes(blendShapeManager ? blendShapeManager.getAllBlendShapes() : {});
   }, [blendShapeManager]);
 
+  // Lip-sync — delegates to BlendShapeManager.setLipSync / clearLipSync.
+  // The manager applies the viseme's per-shape weights internally; we mirror
+  // its post-apply state so the per-shape sliders update in lock-step.
+  const setLipSync = useCallback((viseme: LipSyncVisemeName, weight: number = 1) => {
+    const clampedWeight = Math.max(0, Math.min(1, weight));
+    if (blendShapeManager) {
+      try {
+        blendShapeManager.setLipSync(viseme, clampedWeight);
+      } catch (err) {
+        console.warn('[useBlendShapes] setLipSync failed:', err);
+        return;
+      }
+      setCurrentBlendShapes(blendShapeManager.getAllBlendShapes());
+    }
+    setCurrentLipSync(viseme);
+    setLipSyncWeight(clampedWeight);
+  }, [blendShapeManager]);
+
+  const clearLipSync = useCallback(() => {
+    blendShapeManager?.clearLipSync();
+    setCurrentLipSync(null);
+    setLipSyncWeight(1);
+    setCurrentBlendShapes(blendShapeManager ? blendShapeManager.getAllBlendShapes() : {});
+  }, [blendShapeManager]);
+
+  // Eye blink — independent of the expression preset system. Per-eye control
+  // lets callers wire up winks or per-eye animation drivers without touching
+  // the shared blendShapes map.
+  const setEyeBlink = useCallback((left: number, right: number) => {
+    const clampedLeft = Math.max(0, Math.min(1, left));
+    const clampedRight = Math.max(0, Math.min(1, right));
+    blendShapeManager?.setEyeBlink(clampedLeft, clampedRight);
+    setEyeBlinkState({ left: clampedLeft, right: clampedRight });
+    if (blendShapeManager) {
+      setCurrentBlendShapes(blendShapeManager.getAllBlendShapes());
+    }
+  }, [blendShapeManager]);
+
+  const setBothEyesBlink = useCallback((value: number) => {
+    const clamped = Math.max(0, Math.min(1, value));
+    blendShapeManager?.setBothEyesBlink(clamped);
+    setEyeBlinkState({ left: clamped, right: clamped });
+    if (blendShapeManager) {
+      setCurrentBlendShapes(blendShapeManager.getAllBlendShapes());
+    }
+  }, [blendShapeManager]);
+
   const resetBlendShapes = useCallback(() => {
     blendShapeManager?.reset();
     setCurrentBlendShapes({});
     setCurrentExpression(null);
     setExpressionWeight(1);
+    setCurrentLipSync(null);
+    setLipSyncWeight(1);
+    setEyeBlinkState({ left: 0, right: 0 });
   }, [blendShapeManager]);
 
   const getBlendShape = useCallback((name: string): number => {
@@ -140,10 +200,17 @@ export function useBlendShapes(): BlendShapeControls {
     currentBlendShapes,
     currentExpression,
     expressionWeight,
+    currentLipSync,
+    lipSyncWeight,
+    eyeBlink,
     setBlendShape,
     setBlendShapes,
     setExpression,
     clearExpression,
+    setLipSync,
+    clearLipSync,
+    setEyeBlink,
+    setBothEyesBlink,
     resetBlendShapes,
     getBlendShape,
     hasBlendShape,

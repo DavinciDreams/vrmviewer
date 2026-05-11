@@ -12,6 +12,7 @@ import { ExpressionPanel } from './components/controls/ExpressionPanel';
 import { IdleAnimationPanel } from './components/controls/IdleAnimationPanel';
 import { LightingPanel } from './components/controls/LightingPanel';
 import { PosePanel } from './components/controls/PosePanel';
+import { VRMInfoPanel } from './components/controls/VRMInfoPanel';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
 import { Button } from './components/ui/Button';
@@ -61,7 +62,13 @@ function App() {
   // Idle Animation
   const { start: startIdleAnimation, stop: stopIdleAnimation } = useIdleAnimation();
   // Blend Shapes
-  const { clearExpression } = useBlendShapes();
+  const {
+    clearExpression,
+    currentExpression,
+    expressionWeight,
+    currentLipSync,
+    lipSyncWeight,
+  } = useBlendShapes();
   // Export
   const { exportVRM, exportVRMA, exportGLTF } = useExport();
   // Database
@@ -93,6 +100,7 @@ function App() {
   const [isIdlePanelOpen, setIsIdlePanelOpen] = useState(false);
   const [isLightingPanelOpen, setIsLightingPanelOpen] = useState(false);
   const [isPosePanelOpen, setIsPosePanelOpen] = useState(false);
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   
   // Track thumbnail capture state for visual feedback
   const [isCapturing, setIsCapturing] = useState(false);
@@ -211,6 +219,57 @@ function App() {
         console.warn('[resume] failed to restore last animation:', err);
       }
 
+      // Restore facial state (expression preset + lip-sync viseme).
+      // The BlendShapeManager appears once `currentModel?.vrm` triggers
+      // `useAnimationStore.initializeManagers(...)` (see the effect on
+      // `currentModel`), so we poll for it like cameraManager.
+      try {
+        const facialResult = await prefs.getPreference<{
+          expression?: string | null;
+          expressionWeight?: number;
+          lipSync?: string | null;
+          lipSyncWeight?: number;
+        }>('facialState');
+        if (cancelled) return;
+        if (facialResult.success && facialResult.data) {
+          const target = facialResult.data;
+          const apply = () => {
+            const mgr = useAnimationStore.getState().blendShapeManager;
+            if (!mgr || !mgr.isInitialized()) return false;
+            if (target.expression) {
+              try {
+                mgr.setExpression(
+                  target.expression as Parameters<typeof mgr.setExpression>[0],
+                  target.expressionWeight ?? 1,
+                );
+              } catch (e) {
+                console.warn('[resume] invalid expression preset, skipping:', target.expression, e);
+              }
+            }
+            if (target.lipSync) {
+              try {
+                mgr.setLipSync(
+                  target.lipSync as Parameters<typeof mgr.setLipSync>[0],
+                  target.lipSyncWeight ?? 1,
+                );
+              } catch (e) {
+                console.warn('[resume] invalid viseme, skipping:', target.lipSync, e);
+              }
+            }
+            return true;
+          };
+          if (!apply()) {
+            for (let i = 0; i < 20; i++) {
+              await new Promise((r) => setTimeout(r, 100));
+              if (cancelled) return;
+              if (apply()) break;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[resume] failed to restore facial state:', err);
+      }
+
       // Restore wireframe/visibility toggles. VRMViewer's imperative handle
       // appears once the canvas mounts, so poll like we do for cameraManager.
       try {
@@ -287,6 +346,27 @@ function App() {
     // re-render which is not what we want.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInitialized]);
+
+  /**
+   * Persist facial state (expression preset + lip-sync viseme + weights) on
+   * change. Debounced 250ms so dragging the weight slider doesn't hammer
+   * IndexedDB. Saving null/null clears so we don't re-apply a long-gone
+   * expression next session.
+   */
+  useEffect(() => {
+    if (!isInitialized) return;
+    const handle = setTimeout(() => {
+      getPreferencesService()
+        .setPreference('facialState', {
+          expression: currentExpression,
+          expressionWeight,
+          lipSync: currentLipSync,
+          lipSyncWeight,
+        })
+        .catch((err) => console.warn('[resume] facialState save failed:', err));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [isInitialized, currentExpression, expressionWeight, currentLipSync, lipSyncWeight]);
 
   /**
    * Persist camera position/target to preferences on user interaction.
@@ -1097,6 +1177,34 @@ function App() {
                   </button>
                   <div id="pose-panel" hidden={!isPosePanelOpen}>
                     {isPosePanelOpen && <PosePanel vrm={currentModel?.vrm ?? null} />}
+                  </div>
+                </div>
+
+                {/* VRM info */}
+                <div>
+                  <button
+                    onClick={() => setIsInfoPanelOpen((v) => !v)}
+                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
+                    aria-expanded={isInfoPanelOpen}
+                    aria-controls="info-panel"
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Info
+                    </span>
+                    <svg
+                      className={`w-4 h-4 transition-transform ${isInfoPanelOpen ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <div id="info-panel" hidden={!isInfoPanelOpen}>
+                    {isInfoPanelOpen && <VRMInfoPanel vrm={currentModel?.vrm ?? null} />}
                   </div>
                 </div>
 
