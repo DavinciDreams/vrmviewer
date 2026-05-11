@@ -30,6 +30,7 @@ import { bvhLoader } from './core/three/loaders/BVHLoader';
 import { vrmaLoader } from './core/three/loaders/VRMALoader';
 import { cameraManager } from './core/three/scene/CameraManager';
 import { VRMHelper } from './core/three/vrm/VRMHelper';
+import { extractAllMetadata } from './core/metadata/MetadataPipeline';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
 import { getPreferencesService } from './core/database/services/PreferencesService';
 import { parseDataUrl } from './utils/thumbnailUtils';
@@ -416,7 +417,7 @@ function App() {
     
     try {
       setIsSaving(true);
-      
+
       // Generate unique name
       const getAllResult = await models.getAll();
       const existingNames = hasData(getAllResult) ? getAllResult.data.map((m: { name: string }) => m.name) : [];
@@ -424,28 +425,61 @@ function App() {
         metadata?.name || 'model',
         existingNames
       );
-      
-      // Save model to database
-      const result = await models.save({
-        name: modelName,
-        displayName: modelName,
-        description: '',
-        category: '',
-        tags: [],
-        format: getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx',
-        version: '1.0',
-        author: '',
-        license: '',
-        thumbnail: '',
-        data: unsavedModelData,
-        size: unsavedModelData.byteLength,
-      });
-      
+
+      const format = getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx';
+
+      // Run the metadata extraction pipeline against the live scene before
+      // saving. Each extractor is independently try/catch-guarded inside the
+      // pipeline, so a single failure here can't block the save — we'll fall
+      // back to a bundle-less save.
+      let extractedBundle = undefined;
+      if (currentModel?.scene) {
+        try {
+          extractedBundle = await extractAllMetadata({
+            scene: currentModel.scene,
+            vrm: currentModel.vrm,
+            buffer: unsavedModelData,
+            format,
+          });
+        } catch (err) {
+          console.warn('[save] metadata extraction failed; saving without bundle:', err);
+        }
+      }
+
+      // Save model to database. When the bundle is present, ModelService
+      // merges its promoted fields (sha256, polyBucket, isHumanoid, etc.) onto
+      // the record and runs a sha256 dedup check.
+      const result = await models.save(
+        {
+          name: modelName,
+          displayName: modelName,
+          description: '',
+          category: '',
+          tags: [],
+          format,
+          version: '1.0',
+          author: '',
+          license: '',
+          thumbnail: '',
+          data: unsavedModelData,
+          size: unsavedModelData.byteLength,
+        },
+        undefined,
+        extractedBundle,
+      );
+
       if (!hasSuccessAndData<{ uuid: string }>(result)) {
         console.error('Failed to save model:', result.error);
         return;
       }
-      
+
+      // The save may have hit dedup and returned an existing model rather
+      // than creating a new one. Surface that to the console so the user
+      // understands why the library count didn't change.
+      if ('wasDeduped' in result && (result as { wasDeduped?: boolean }).wasDeduped) {
+        console.info('Model already exists in library; loaded existing record.');
+      }
+
       const modelUuid = result.data.uuid;
       setCurrentModelUuid(modelUuid);
 
@@ -494,7 +528,7 @@ function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models, thumbnailService]);
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models, thumbnailService, currentModel]);
   
   /**
    * Handle animation save

@@ -81,6 +81,20 @@ export class VRMViewerDatabase extends Dexie {
     this.version(3).stores({
       preferences: '++id, &key, updatedAt',
     });
+
+    // Version 4: expand the models index for the extraction pipeline.
+    //   - `sha256`: dedup lookups via `findBySha256`
+    //   - `license`, `author`: faceted filtering + `getDistinctValues`
+    //   - `polyBucket`, `isHumanoid`: faceted filtering
+    //   - `*searchTokens`, `*humanoidBones`: multiEntry indexes for token /
+    //     bone-presence queries
+    // Dexie's version().stores() replaces the schema for the named table, so
+    // the full index list is re-stated. Existing records load unchanged; the
+    // new fields are optional on ModelRecord.
+    this.version(4).stores({
+      models:
+        '++id, uuid, name, displayName, description, category, format, version, createdAt, updatedAt, size, sha256, license, author, polyBucket, isHumanoid, *tags, *searchTokens, *humanoidBones',
+    });
   }
 }
 
@@ -126,7 +140,7 @@ export async function deleteDatabase(): Promise<void> {
  * Database schema versions
  */
 export const SCHEMA_VERSIONS = {
-  CURRENT: 3,
+  CURRENT: 4,
   VERSIONS: [
     {
       version: 1,
@@ -140,6 +154,11 @@ export const SCHEMA_VERSIONS = {
       version: 3,
       description: 'Add preferences key/value table for user settings',
     },
+    {
+      version: 4,
+      description:
+        'Expand models index for extraction pipeline (sha256, license, author, polyBucket, isHumanoid, *searchTokens, *humanoidBones)',
+    },
   ],
 };
 
@@ -148,7 +167,7 @@ export const SCHEMA_VERSIONS = {
  */
 export const DATABASE_CONFIG = {
   NAME: 'VRMViewerDB',
-  VERSION: 3,
+  VERSION: 4,
   MAX_SIZE: 500 * 1024 * 1024, // 500MB default
   CHUNK_SIZE: 1024 * 1024, // 1MB chunks for large files
 };

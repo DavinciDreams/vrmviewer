@@ -16,6 +16,15 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 
 /**
+ * Summary view of a model — same shape as ModelRecord but with the raw
+ * `data: ArrayBuffer` stripped. Useful for any code path that needs to
+ * scan/inspect records without paying the cost of pulling the model blob
+ * into memory (e.g. dedup lookups, library listings, batch metadata
+ * inspection).
+ */
+export type ModelRecordSummary = Omit<ModelRecord, 'data'> & { data?: undefined };
+
+/**
  * Model Repository
  * Provides database operations for models
  */
@@ -597,6 +606,72 @@ export class ModelRepository {
           details: error,
         },
       };
+    }
+  }
+
+  /**
+   * Find a model by its SHA-256 hash.
+   *
+   * Used by the dedup path in `ModelService.saveModel` — when the extraction
+   * pipeline produces a hash that matches an existing record, the save is
+   * skipped and the caller is told the model already exists. Returns a
+   * blob-free `ModelRecordSummary` since the call sites only need metadata
+   * to confirm a match.
+   *
+   * Requires the `sha256` index added in schema v4.
+   */
+  async findBySha256(sha256: string): Promise<DatabaseOperationResult<ModelRecordSummary>> {
+    try {
+      const model = await this.db.models.where('sha256').equals(sha256).first();
+
+      if (!model) {
+        return {
+          success: false,
+          error: {
+            type: 'NOT_FOUND',
+            message: `No model found with sha256 ${sha256}`,
+          },
+        };
+      }
+
+      // Strip the ArrayBuffer blob — callers don't need it for dedup.
+      const summary: ModelRecordSummary = {
+        ...model,
+        data: undefined,
+      };
+      return { success: true, data: summary };
+    } catch (error) {
+      console.error(`Failed to find model by sha256 ${sha256}:`, error);
+      return {
+        success: false,
+        error: {
+          type: 'UNKNOWN',
+          message: 'Failed to look up model by sha256',
+          details: error,
+        },
+      };
+    }
+  }
+
+  /**
+   * Return the distinct values for one of the indexed scalar fields. Used
+   * to populate faceted-filter dropdowns without scanning every record.
+   *
+   * Constrained to fields that are indexed on the `models` table in schema
+   * v4 — Dexie throws if you try `orderBy` on a non-indexed field.
+   */
+  async getDistinctValues(
+    field: 'category' | 'format' | 'license' | 'author',
+  ): Promise<string[]> {
+    try {
+      const keys = await this.db.models.orderBy(field).uniqueKeys();
+      // uniqueKeys() returns IndexableType[]; filter to non-empty strings.
+      return (keys as unknown[]).filter(
+        (k): k is string => typeof k === 'string' && k.length > 0,
+      );
+    } catch (error) {
+      console.error(`Failed to get distinct values for field "${field}":`, error);
+      return [];
     }
   }
 }
