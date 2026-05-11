@@ -206,6 +206,30 @@ export class ModelRepository {
         );
       }
 
+      // Extraction-pipeline facet filters (all optional; only kick in for
+      // records that have the field populated — pre-pipeline records pass
+      // through unfiltered when the facet is unset, which is the desired
+      // behaviour since absence ≠ "not commercial-allowed").
+      if (options.polyBucket) {
+        collection = collection.filter((model) => model.polyBucket === options.polyBucket);
+      }
+      if (options.isHumanoid !== undefined) {
+        collection = collection.filter((model) => model.isHumanoid === options.isHumanoid);
+      }
+      if (options.license) {
+        collection = collection.filter((model) => model.license === options.license);
+      }
+      if (options.hasCommercialUse) {
+        // Permitted iff normalizedLicense.commercialUsage is one of the
+        // explicit allow values. Records without normalizedLicense are
+        // excluded — we can't assert their stance.
+        const ALLOWED = new Set(['Allow', 'PersonalProfit', 'Corporation']);
+        collection = collection.filter((model) => {
+          const usage = model.normalizedLicense?.commercialUsage;
+          return !!usage && ALLOWED.has(usage);
+        });
+      }
+
       // Get all filtered records
       const results = await collection.toArray();
 
@@ -266,6 +290,40 @@ export class ModelRepository {
         error: {
           type: 'UNKNOWN',
           message: 'Failed to get all models',
+          details: error,
+        },
+      };
+    }
+  }
+
+  /**
+   * Get all models without their raw `data` ArrayBuffer.
+   *
+   * Library listings only need metadata + thumbnail; pulling every
+   * record's binary into memory is wasteful and grows linearly with
+   * library size. Internally streams via `.each()` and clones each
+   * record sans `data`, so memory pressure is one row at a time
+   * rather than the whole table.
+   */
+  async getAllSummaries(): Promise<DatabaseOperationResult<ModelRecordSummary[]>> {
+    try {
+      const summaries: ModelRecordSummary[] = [];
+      await this.db.models.each((record) => {
+        const { data: _omit, ...rest } = record;
+        void _omit;
+        summaries.push(rest as ModelRecordSummary);
+      });
+      return {
+        success: true,
+        data: summaries,
+      };
+    } catch (error) {
+      console.error('Failed to get model summaries:', error);
+      return {
+        success: false,
+        error: {
+          type: 'UNKNOWN',
+          message: 'Failed to get model summaries',
           details: error,
         },
       };
