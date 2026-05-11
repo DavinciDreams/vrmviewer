@@ -14,6 +14,7 @@ export interface ModelData {
   createdAt: string;
   format?: string;
   category?: string;
+  size?: number;
 }
 
 export interface ModelLibraryProps {
@@ -51,6 +52,9 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   // Filters
   const [formatFilter, setFormatFilter] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
+  // Sort — 'recent' surfaces the most-recently-saved records first, the
+  // closest UI to the unwired `useDatabase.models.getRecent()` method.
+  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'oldest' | 'size'>('recent');
 
   // Thumbnail service
   const thumbnailService = getThumbnailService();
@@ -78,6 +82,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           createdAt: record.createdAt.toISOString(),
           format: record.format,
           category: record.category,
+          size: record.size,
         }));
         setModelList(transformedData);
 
@@ -122,7 +127,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   const filteredModels = useMemo(
     () => {
       const q = searchQuery.toLowerCase();
-      return modelList
+      const filtered = modelList
         .filter((model) => {
           const matchesSearch =
             !q ||
@@ -136,8 +141,25 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           ...model,
           thumbnail: thumbnails[model.id] || model.thumbnail,
         }));
+
+      // Sort in place (filtered is already a fresh array from .filter().map())
+      filtered.sort((a, b) => {
+        switch (sortBy) {
+          case 'name':
+            return a.name.localeCompare(b.name);
+          case 'recent':
+            return b.createdAt.localeCompare(a.createdAt);
+          case 'oldest':
+            return a.createdAt.localeCompare(b.createdAt);
+          case 'size':
+            return (b.size ?? 0) - (a.size ?? 0);
+          default:
+            return 0;
+        }
+      });
+      return filtered;
     },
-    [modelList, thumbnails, searchQuery, formatFilter, categoryFilter],
+    [modelList, thumbnails, searchQuery, formatFilter, categoryFilter, sortBy],
   );
 
   const handleEdit = (id: string) => {
@@ -323,6 +345,22 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             )}
           </div>
         )}
+        <div className="flex items-center gap-2">
+          <label htmlFor="model-sort" className="text-xs text-gray-400 whitespace-nowrap">
+            Sort
+          </label>
+          <select
+            id="model-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="flex-1 min-w-0 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="recent">Recent first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name">Name</option>
+            <option value="size">Size</option>
+          </select>
+        </div>
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="text-gray-400">
             {selectMode
