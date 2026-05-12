@@ -212,6 +212,17 @@ export function useDatabase() {
   };
 
   /**
+   * Get every model as a blob-stripped summary — preferred for library
+   * listings (no need to pull each record's data ArrayBuffer into memory).
+   */
+  const getAllModelSummaries = async () => {
+    const svc = modelService;
+    if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Model service not initialized' } };
+    await svc.initialize();
+    return await svc.listModelSummaries();
+  };
+
+  /**
    * Get model by ID
    */
   const getModelById = async (id: number) => {
@@ -396,6 +407,7 @@ export function useDatabase() {
     }), [animationService]),
     models: useMemo(() => ({
       getAll: getAllModels,
+      getAllSummaries: getAllModelSummaries,
       getById: getModelById,
       getByUuid: getModelByUuid,
       save: saveModel,

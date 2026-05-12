@@ -249,6 +249,16 @@ export class ModelService {
   /**
    * List all models
    */
+  /**
+   * Get every model as a blob-stripped summary — fast and cheap for
+   * library listings that only need metadata + thumbnail. Each summary
+   * has the `data: ArrayBuffer` field replaced with `undefined`.
+   */
+  async listModelSummaries() {
+    await this.initialize();
+    return await this.repository.getAllSummaries();
+  }
+
   async listModels(): Promise<DatabaseOperationResult<ModelRecord[]>> {
     return await this.getAllModels();
   }

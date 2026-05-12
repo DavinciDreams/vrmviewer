@@ -68,7 +68,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      const result = await models.getAll();
+      // Use the blob-stripped summary getter — the library UI only needs
+      // metadata + thumbnail, never the raw model ArrayBuffer. With large
+      // libraries (10+ multi-MB VRMs) the difference is significant.
+      const result = await models.getAllSummaries();
 
       // Handle DatabaseOperationResult type - check if result has data property
       const records = 'data' in result && result.data ? result.data : null;
