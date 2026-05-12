@@ -53,6 +53,8 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
   // Filters
   const [formatFilter, setFormatFilter] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
+  // Sort — same vocabulary as ModelLibrary; 'duration' is animation-only.
+  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'oldest' | 'duration'>('recent');
 
   const fetchAnimations = useCallback(async () => {
     if (!isInitialized) return;
@@ -108,7 +110,22 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
     .filter((animation) =>
     animation.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     animation.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  )
+    .slice() // copy before in-place sort so the upstream list stays stable
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'recent':
+          return b.createdAt.localeCompare(a.createdAt);
+        case 'oldest':
+          return a.createdAt.localeCompare(b.createdAt);
+        case 'duration':
+          return (b.duration ?? 0) - (a.duration ?? 0);
+        default:
+          return 0;
+      }
+    });
 
   const toggleSelectMode = () => {
     setSelectMode((v) => {
@@ -263,6 +280,22 @@ export const AnimationLibrary: React.FC<AnimationLibraryProps> = ({
             )}
           </div>
         )}
+        <div className="flex items-center gap-2">
+          <label htmlFor="animation-sort" className="text-xs text-gray-400 whitespace-nowrap">
+            Sort
+          </label>
+          <select
+            id="animation-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="flex-1 min-w-0 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="recent">Recent first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name">Name</option>
+            <option value="duration">Duration</option>
+          </select>
+        </div>
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="text-gray-400">
             {selectMode
