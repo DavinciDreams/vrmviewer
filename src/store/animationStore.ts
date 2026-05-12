@@ -17,6 +17,10 @@ import { VRM } from '@pixiv/three-vrm';
  */
 interface AnimationStoreState {
   currentAnimation: THREE.AnimationClip | null;
+  /** Stable id for the clip currently registered on AnimationManager, used
+   *  for setWeight / play / blend addressing. Null when no clip is loaded
+   *  or when the manager isn't initialised yet (model-less playback path). */
+  currentClipId: string | null;
   animations: Map<string, THREE.AnimationClip>;
   playbackState: AnimationState;
   error: string | null;
@@ -37,6 +41,7 @@ interface AnimationStoreState {
  */
 interface AnimationStoreActions {
   setAnimation: (animation: THREE.AnimationClip) => void;
+  setCurrentClipId: (id: string | null) => void;
   setAnimations: (animations: Map<string, THREE.AnimationClip>) => void;
   setPlaybackState: (state: AnimationState) => void;
   setError: (error: string | null) => void;
@@ -60,6 +65,7 @@ export const useAnimationStore = create<AnimationStoreState & AnimationStoreActi
     (set) => ({
       // Initial state
       currentAnimation: null,
+      currentClipId: null,
       animations: new Map(),
       playbackState: {
         isPlaying: false,
@@ -85,6 +91,11 @@ export const useAnimationStore = create<AnimationStoreState & AnimationStoreActi
         set({
           currentAnimation: animation,
           error: null,
+        }),
+
+      setCurrentClipId: (id) =>
+        set({
+          currentClipId: id,
         }),
 
       setAnimations: (animations) =>
@@ -115,6 +126,7 @@ export const useAnimationStore = create<AnimationStoreState & AnimationStoreActi
       clearAnimation: () =>
         set({
           currentAnimation: null,
+          currentClipId: null,
           metadata: null,
           error: null,
         }),

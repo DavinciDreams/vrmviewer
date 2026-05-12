@@ -1,11 +1,16 @@
 /**
  * AnimationControls Component
- * Play, pause, stop, speed control, and loop toggle
+ * Play, pause, stop, speed control, loop toggle, weight, and crossfade.
+ *
+ * Weight + crossfade slide into the AnimationManager via useAnimation —
+ * weight drives `manager.setWeight(currentClipId, ...)` in real time;
+ * crossfade is the fadeIn duration applied on the next play() call.
  */
 
-import React from 'react';
+import React, { useId, useState } from 'react';
 import { Button } from '../ui/Button';
 import { usePlayback } from '../../hooks/usePlayback';
+import { useAnimation } from '../../hooks/useAnimation';
 
 /**
  * AnimationControls props
@@ -32,11 +37,21 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
   const { isPlaying, isStopped, speed, loop } = usePlayback();
   const { play, pause, stop, setSpeed, toggleLoop } = usePlayback();
 
+  // AnimationManager-backed controls — weight tracks the live clip,
+  // crossfade is captured locally and applied on the next play.
+  const { playbackState, setWeight, play: playAnim } = useAnimation();
+  const [crossfadeDuration, setCrossfadeDuration] = useState(0.2);
+  const weightId = useId();
+  const crossfadeId = useId();
+  const weight = playbackState?.weight ?? 1;
+
   /**
-   * Handle play button click
+   * Handle play button click — uses the local crossfade duration as the
+   * fadeIn argument so switching clips visibly transitions.
    */
   const handlePlay = () => {
     play();
+    playAnim(crossfadeDuration);
     if (onPlay) {
       onPlay();
     }
@@ -188,6 +203,50 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
           <span className="ml-1 text-xs">ON</span>
         )}
       </Button>
+
+      {/* Divider */}
+      <div className="w-px h-8 bg-gray-600" />
+
+      {/* Weight slider — live mixer weight for the current clip */}
+      <div className="flex items-center space-x-2">
+        <label htmlFor={weightId} className="text-sm text-gray-400 whitespace-nowrap">
+          Weight
+        </label>
+        <input
+          id={weightId}
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={weight}
+          onChange={(e) => setWeight(parseFloat(e.target.value))}
+          className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+          title={`Weight ${weight.toFixed(2)}`}
+        />
+        <span className="text-xs text-blue-400 font-mono w-10 text-right">{weight.toFixed(2)}</span>
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-8 bg-gray-600" />
+
+      {/* Crossfade duration — applied as fadeIn on the next play() call */}
+      <div className="flex items-center space-x-2">
+        <label htmlFor={crossfadeId} className="text-sm text-gray-400 whitespace-nowrap" title="Crossfade duration on next play">
+          Fade
+        </label>
+        <input
+          id={crossfadeId}
+          type="range"
+          min="0"
+          max="2"
+          step="0.05"
+          value={crossfadeDuration}
+          onChange={(e) => setCrossfadeDuration(parseFloat(e.target.value))}
+          className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+          title={`Crossfade ${crossfadeDuration.toFixed(2)}s`}
+        />
+        <span className="text-xs text-blue-400 font-mono w-10 text-right">{crossfadeDuration.toFixed(2)}s</span>
+      </div>
     </div>
   );
 };
