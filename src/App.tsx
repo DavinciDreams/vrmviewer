@@ -32,6 +32,7 @@ import { vrmaLoader } from './core/three/loaders/VRMALoader';
 import { cameraManager } from './core/three/scene/CameraManager';
 import { VRMHelper } from './core/three/vrm/VRMHelper';
 import { extractAllMetadata } from './core/metadata/MetadataPipeline';
+import { runBackfillIfNeeded } from './core/metadata/backfill';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
 import { getPreferencesService } from './core/database/services/PreferencesService';
 import { parseDataUrl } from './utils/thumbnailUtils';
@@ -367,6 +368,31 @@ function App() {
     }, 250);
     return () => clearTimeout(handle);
   }, [isInitialized, currentExpression, expressionWeight, currentLipSync, lipSyncWeight]);
+
+  /**
+   * Run the metadata-pipeline backfill once on boot. Short-circuits when
+   * the current EXTRACTOR_VERSION has already been processed for this
+   * user — so the only actual work happens on a version bump or for
+   * records that predate the pipeline. Yields to requestIdleCallback
+   * between batches so it doesn't compete with rendering.
+   */
+  useEffect(() => {
+    if (!isInitialized) return;
+    let cancelled = false;
+    runBackfillIfNeeded((progress) => {
+      if (cancelled) return;
+      if (progress.processed === progress.total) {
+        console.info(
+          `[backfill] ${progress.updated} updated, ${progress.failed} failed of ${progress.total}`,
+        );
+      }
+    }).catch((err) => {
+      if (!cancelled) console.warn('[backfill] failed:', err);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isInitialized]);
 
   /**
    * Persist camera position/target to preferences on user interaction.
