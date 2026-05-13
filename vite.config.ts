@@ -12,6 +12,7 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    allowedHosts: ['gx10-9959.tailb08bc.ts.net'],
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3100',
