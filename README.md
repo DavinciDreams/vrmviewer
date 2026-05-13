@@ -55,9 +55,18 @@ npm install
 npm run dev
 ```
 
-4. Open your browser and navigate to:
+4. Optional: start the server-side asset library API in a second terminal:
+```bash
+npm run server
 ```
-http://localhost:5173
+
+When the API is available at `/api`, the model library uses server-side
+persistence for saved model files and metadata. If the API is unavailable, the
+viewer falls back to browser IndexedDB.
+
+5. Open your browser and navigate to:
+```
+http://localhost:3000
 ```
 
 ## Usage
@@ -143,6 +152,28 @@ These idle animations are automatically disabled when an animation is loaded and
 - Edit model names and descriptions
 - Delete models
 
+### Server-Side Persistence
+
+The model library can persist assets through the bundled Node API:
+
+```bash
+npm run server
+```
+
+Default API settings:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ASSET_LIBRARY_HOST` | `127.0.0.1` | API bind address |
+| `ASSET_LIBRARY_PORT` | `3100` | API port |
+| `ASSET_LIBRARY_DATA_DIR` | `./data/asset-library` | Model metadata and binary storage |
+| `ASSET_LIBRARY_MAX_BODY_MB` | `512` | Maximum JSON upload body size |
+
+The Vite dev server proxies `/api` to `http://127.0.0.1:3100`, so no client
+configuration is needed for local development. Set `VITE_ASSET_LIBRARY_MODE=local`
+to force browser-only IndexedDB persistence. Set `VITE_ASSET_LIBRARY_API_URL` to
+an explicit API URL when the asset API is hosted separately.
+
 ## File Naming
 
 When you save animations or models, they are automatically renamed using:
@@ -158,7 +189,7 @@ The application follows a modular architecture:
 - **Hooks**: Custom React hooks for state management and business logic
 - **Stores**: Zustand stores for global state management
 - **Core**: Three.js utilities for 3D rendering, animation, and file loading
-- **Database**: IndexedDB-based storage for animations and models
+- **Database**: IndexedDB browser cache plus optional server-side model persistence
 - **Utils**: Helper functions for file naming, validation, and export
 
 See [`plans/vrm-viewer-architecture.md`](plans/vrm-viewer-architecture.md) for detailed architecture documentation.
@@ -168,6 +199,7 @@ See [`plans/vrm-viewer-architecture.md`](plans/vrm-viewer-architecture.md) for d
 ### Available Scripts
 
 - `npm run dev` - Start development server with hot reload
+- `npm run server` - Start server-side asset library API
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build locally
 - `npm run lint` - Run ESLint for code quality checks
@@ -178,6 +210,7 @@ See [`plans/vrm-viewer-architecture.md`](plans/vrm-viewer-architecture.md) for d
 ```
 vrmviewer/
 ├── public/              # Static assets
+├── server/              # Server-side asset library API
 ├── src/
 │   ├── components/      # React components
 │   │   ├── controls/    # Playback and model controls
@@ -216,7 +249,8 @@ vrmviewer/
 
 ## Known Limitations
 
-- Database operations are currently in-memory (not persisted to IndexedDB yet)
+- Animations are still persisted in browser IndexedDB only
+- Server-side persistence currently covers model assets and model metadata
 - Export functionality is a placeholder implementation
 - Thumbnail capture is not fully implemented
 - Camera controls are limited

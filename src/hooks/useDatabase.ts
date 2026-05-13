@@ -6,12 +6,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getAnimationService } from '../core/database/services/AnimationService';
 import { getModelService, ExtractedBundle } from '../core/database/services/ModelService';
+import { getRemoteModelService, RemoteModelService } from '../core/database/services/RemoteModelService';
 import { getDatabaseService } from '../core/database/DatabaseService';
 import {
   AnimationRecord,
   ModelRecord,
   DatabaseQueryOptions,
 } from '../types/database.types';
+
+type LocalModelService = ReturnType<typeof getModelService>;
+type ModelServiceLike = LocalModelService | RemoteModelService;
+
+function shouldTryServerLibrary(): boolean {
+  const mode = import.meta.env.VITE_ASSET_LIBRARY_MODE as string | undefined;
+  return mode !== 'local';
+}
 
 /**
  * useDatabase Hook
@@ -20,7 +29,7 @@ import {
 export function useDatabase() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [animationService, setAnimationService] = useState<ReturnType<typeof getAnimationService> | null>(null);
-  const [modelService, setModelService] = useState<ReturnType<typeof getModelService> | null>(null);
+  const [modelService, setModelService] = useState<ModelServiceLike | null>(null);
   // Singleton; useMemo gives a stable reference for hook deps.
   const dbService = useMemo(() => getDatabaseService(), []);
 
@@ -29,10 +38,22 @@ export function useDatabase() {
     const init = async () => {
       try {
         const animSvc = getAnimationService();
-        const modSvc = getModelService();
+        let modSvc: ModelServiceLike = getModelService();
         
         await dbService.initialize();
         await animSvc.initialize();
+
+        if (shouldTryServerLibrary()) {
+          try {
+            const remoteSvc = getRemoteModelService();
+            await remoteSvc.initialize();
+            modSvc = remoteSvc;
+            console.info('[asset-library] using server-backed model persistence');
+          } catch (error) {
+            console.warn('[asset-library] server unavailable; falling back to IndexedDB model persistence:', error);
+          }
+        }
+
         await modSvc.initialize();
 
         setAnimationService(animSvc);
