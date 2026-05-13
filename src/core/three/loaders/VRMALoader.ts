@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMAnimationLoaderPlugin } from '@pixiv/three-vrm-animation';
+import { configureDracoLoader } from './configureDracoLoader';
 import {
   LoaderResult,
   LoaderError,
@@ -37,6 +38,7 @@ export class VRTALoaderWrapper {
 
   constructor() {
     this.gltfLoader = new GLTFLoader();
+    configureDracoLoader(this.gltfLoader);
     this.gltfLoader.register((parser) => new VRMAnimationLoaderPlugin(parser));
   }
 

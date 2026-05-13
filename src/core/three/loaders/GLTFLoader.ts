@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { configureDracoLoader } from './configureDracoLoader';
 import {
   LoaderResult,
   LoaderError,
@@ -31,6 +32,7 @@ export class GLTFLoaderWrapper {
 
   constructor() {
     this.gltfLoader = new GLTFLoader();
+    configureDracoLoader(this.gltfLoader);
   }
 
   /**
