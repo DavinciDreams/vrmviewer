@@ -12,6 +12,8 @@ import { useAnimation } from './useAnimation';
 import { cameraManager } from '../core/three/scene/CameraManager';
 import { lightingManager } from '../core/three/scene/LightingManager';
 import { usePlaybackStore } from '../store/playbackStore';
+import { getPreferencesService } from '../core/database/services/PreferencesService';
+import { applyCameraSnapshot, type CameraPresetMap } from './useCameraPresets';
 
 /**
  * DAM configuration from URL query parameters
@@ -189,18 +191,33 @@ export function useDAMIntegration(): DAMIntegrationResult {
   }, [loadAnimationFromFile]);
 
   /**
-   * Apply camera configuration
+   * Apply camera configuration. Accepts:
+   *   - `x,y,z` — raw position coordinates
+   *   - `preset:<name>` — named preset; user-saved presets (managed in
+   *     `useCameraPresets` and stored under the `cameraPresets`
+   *     preference key) are checked first, with the built-in
+   *     `front` / `side` / `top` / `default` mappings as the fallback.
    */
-  const applyCameraConfig = useCallback((cameraConfig?: string) => {
+  const applyCameraConfig = useCallback(async (cameraConfig?: string) => {
     if (!cameraConfig || !cameraManager) {
       return;
     }
 
     try {
-      // Parse camera configuration
-      // Format: "x,y,z" for position or "preset:name" for presets
       if (cameraConfig.startsWith('preset:')) {
         const preset = cameraConfig.replace('preset:', '');
+
+        // Check user-saved presets first so a user-named "front" wins
+        // over the built-in front (matches what the user explicitly saved).
+        const userPresetsResult = await getPreferencesService()
+          .getPreference<CameraPresetMap>('cameraPresets');
+        const userPresets = userPresetsResult.success ? userPresetsResult.data : undefined;
+        if (userPresets && preset in userPresets) {
+          applyCameraSnapshot(userPresets[preset]);
+          return;
+        }
+
+        // Fall back to the built-in preset map.
         switch (preset.toLowerCase()) {
           case 'front':
             cameraManager.setCameraPosition(new THREE.Vector3(0, 1.5, 3));
@@ -362,8 +379,8 @@ export function useDAMIntegration(): DAMIntegrationResult {
       applyBackgroundConfig(damConfig.background);
       applyLightingConfig(damConfig.lighting);
 
-      // Apply camera configuration
-      applyCameraConfig(damConfig.camera);
+      // Apply camera configuration (async — user-preset lookup may hit the DB).
+      await applyCameraConfig(damConfig.camera);
 
       // Apply playback configuration
       applyPlaybackConfig(damConfig);
