@@ -16,6 +16,7 @@ import { VRMInfoPanel } from './components/controls/VRMInfoPanel';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
 import { Button } from './components/ui/Button';
+import { BackfillProgressToast } from './components/ui/BackfillProgressToast';
 import { useModel } from './hooks/useModel';
 import { useAnimationStore } from './store/animationStore';
 import { usePlayback } from './hooks/usePlayback';
@@ -32,7 +33,7 @@ import { vrmaLoader } from './core/three/loaders/VRMALoader';
 import { cameraManager } from './core/three/scene/CameraManager';
 import { VRMHelper } from './core/three/vrm/VRMHelper';
 import { extractAllMetadata } from './core/metadata/MetadataPipeline';
-import { runBackfillIfNeeded } from './core/metadata/backfill';
+import { runBackfillIfNeeded, type BackfillProgress } from './core/metadata/backfill';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
 import { getPreferencesService } from './core/database/services/PreferencesService';
 import { parseDataUrl } from './utils/thumbnailUtils';
@@ -115,6 +116,10 @@ function App() {
   // Thumbnail service (singleton — stable identity for hook deps)
   const thumbnailService = useMemo(() => getThumbnailService(), []);
   const [autoCapturedThumbnail, setAutoCapturedThumbnail] = useState<string | null>(null);
+
+  // Live metadata-backfill progress for the toast. `null` while no backfill
+  // is active; the toast also hides itself when `total === 0`.
+  const [backfillProgress, setBackfillProgress] = useState<BackfillProgress | null>(null);
   
   /**
    * Handle auto-captured thumbnail from VRMViewer
@@ -381,11 +386,7 @@ function App() {
     let cancelled = false;
     runBackfillIfNeeded((progress) => {
       if (cancelled) return;
-      if (progress.processed === progress.total) {
-        console.info(
-          `[backfill] ${progress.updated} updated, ${progress.failed} failed of ${progress.total}`,
-        );
-      }
+      setBackfillProgress(progress);
     }).catch((err) => {
       if (!cancelled) console.warn('[backfill] failed:', err);
     });
@@ -1395,6 +1396,7 @@ function App() {
           description: '',
         } : undefined}
       />
+      <BackfillProgressToast progress={backfillProgress} />
     </MainLayout>
   );
 }
