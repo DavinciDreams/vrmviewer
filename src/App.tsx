@@ -15,6 +15,11 @@ import { PosePanel } from './components/controls/PosePanel';
 import { VRMInfoPanel } from './components/controls/VRMInfoPanel';
 import { ExportDialog, ExportOptionsData } from './components/export/ExportDialog';
 import { AnimationEditor } from './components/database/AnimationEditor';
+import {
+  SaveModelDialog,
+  type SaveModelDialogDefaults,
+  type SaveModelFormData,
+} from './components/database/SaveModelDialog';
 import { Button } from './components/ui/Button';
 import { BackfillProgressToast } from './components/ui/BackfillProgressToast';
 import { useModel } from './hooks/useModel';
@@ -35,6 +40,7 @@ import { VRMHelper } from './core/three/vrm/VRMHelper';
 import { extractAllMetadata } from './core/metadata/MetadataPipeline';
 import { runBackfillIfNeeded, type BackfillProgress } from './core/metadata/backfill';
 import { getThumbnailService } from './core/database/services/ThumbnailService';
+import type { ExtractedBundle } from './core/database/services/ModelService';
 import { getPreferencesService } from './core/database/services/PreferencesService';
 import { parseDataUrl } from './utils/thumbnailUtils';
 import * as THREE from 'three';
@@ -112,6 +118,14 @@ function App() {
   const [unsavedModelData, setUnsavedModelData] = useState<ArrayBuffer | null>(null);
   const [unsavedThumbnailData, setUnsavedThumbnailData] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Save-model dialog: opens between the "Save Model" button click and the
+  // actual save. Lets the user review + edit auto-extracted license metadata
+  // before it lands in the database. The bundle is cached across the
+  // open → confirm transition so we don't re-extract on save.
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [saveDialogDefaults, setSaveDialogDefaults] = useState<SaveModelDialogDefaults | null>(null);
+  const [pendingExtractedBundle, setPendingExtractedBundle] = useState<ExtractedBundle | undefined>(undefined);
   
   // Thumbnail service (singleton — stable identity for hook deps)
   const thumbnailService = useMemo(() => getThumbnailService(), []);
@@ -514,44 +528,84 @@ function App() {
   }, [isInitialized, handleFileLoad]);
   
   /**
-   * Handle save model (manual save from unsaved state)
+   * Open the save-model dialog. Extracts metadata up front so the dialog
+   * can pre-fill license fields with what the pipeline auto-detected from
+   * the VRM, letting users review + override before committing. The actual
+   * save runs in `handleSaveModelConfirm` once the user clicks "Save to
+   * Library".
    */
-  const handleSaveModel = useCallback(async () => {
+  const handleOpenSaveDialog = useCallback(async () => {
     if (!unsavedModelFile || !unsavedModelData) {
       console.warn('No unsaved model to save');
       return;
     }
-    
+
+    const format = getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx';
+
+    // Run extraction now so the dialog can show what was auto-detected.
+    // Failure falls through to an empty-default open — the user can still
+    // fill in license info manually.
+    let extractedBundle: ExtractedBundle | undefined;
+    if (currentModel?.scene) {
+      try {
+        extractedBundle = (await extractAllMetadata({
+          scene: currentModel.scene,
+          vrm: currentModel.vrm,
+          buffer: unsavedModelData,
+          format,
+        })) as ExtractedBundle;
+      } catch (err) {
+        console.warn('[save] metadata extraction failed; opening with empty defaults:', err);
+      }
+    }
+
+    // Generate the name suggestion the same way the previous flow did so
+    // the dialog opens with a sensible default in the Name field.
+    const getAllResult = await models.getAll();
+    const existingNames = hasData(getAllResult)
+      ? getAllResult.data.map((m: { name: string }) => m.name)
+      : [];
+    const suggestedName = generateUniqueName(metadata?.name || 'model', existingNames);
+
+    setPendingExtractedBundle(extractedBundle);
+    setSaveDialogDefaults({
+      name: suggestedName,
+      description: '',
+      author: extractedBundle?.normalizedLicense?.licenseName ? '' : '',
+      license: extractedBundle?.normalizedLicense?.licenseName ?? '',
+      normalizedLicense: extractedBundle?.normalizedLicense ?? null,
+    });
+    setIsSaveDialogOpen(true);
+  }, [unsavedModelFile, unsavedModelData, currentModel, metadata, models]);
+
+  /**
+   * Handle save-dialog confirmation. Uses the form values to override the
+   * auto-extracted bundle so user edits flow through to the persisted
+   * record (especially `normalizedLicense`, which the pipeline pulled from
+   * the VRM but the user may want to correct).
+   */
+  const handleSaveModelConfirm = useCallback(async (form: SaveModelFormData) => {
+    if (!unsavedModelFile || !unsavedModelData) {
+      console.warn('No unsaved model to save');
+      setIsSaveDialogOpen(false);
+      return;
+    }
+
     try {
       setIsSaving(true);
+      setIsSaveDialogOpen(false);
 
-      // Generate unique name
-      const getAllResult = await models.getAll();
-      const existingNames = hasData(getAllResult) ? getAllResult.data.map((m: { name: string }) => m.name) : [];
-      const modelName = generateUniqueName(
-        metadata?.name || 'model',
-        existingNames
-      );
-
+      const modelName = form.name;
       const format = getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx';
 
-      // Run the metadata extraction pipeline against the live scene before
-      // saving. Each extractor is independently try/catch-guarded inside the
-      // pipeline, so a single failure here can't block the save — we'll fall
-      // back to a bundle-less save.
-      let extractedBundle = undefined;
-      if (currentModel?.scene) {
-        try {
-          extractedBundle = await extractAllMetadata({
-            scene: currentModel.scene,
-            vrm: currentModel.vrm,
-            buffer: unsavedModelData,
-            format,
-          });
-        } catch (err) {
-          console.warn('[save] metadata extraction failed; saving without bundle:', err);
-        }
-      }
+      // Merge user-edited license fields onto the cached bundle so the
+      // promoted-fields path inside ModelService sees the user's values.
+      const extractedBundle: ExtractedBundle | undefined = pendingExtractedBundle
+        ? {
+            ...pendingExtractedBundle,
+            normalizedLicense: form.normalizedLicense,
+          }
+        : undefined;
 
       // Save model to database. When the bundle is present, ModelService
       // merges its promoted fields (sha256, polyBucket, isHumanoid, etc.) onto
@@ -560,13 +614,13 @@ function App() {
         {
           name: modelName,
           displayName: modelName,
-          description: '',
+          description: form.description,
           category: '',
           tags: [],
           format,
           version: '1.0',
-          author: '',
-          license: '',
+          author: form.author,
+          license: form.license,
           thumbnail: '',
           data: unsavedModelData,
           size: unsavedModelData.byteLength,
@@ -634,8 +688,16 @@ function App() {
       console.error('Failed to save model:', error);
     } finally {
       setIsSaving(false);
+      setPendingExtractedBundle(undefined);
+      setSaveDialogDefaults(null);
     }
-  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, metadata, models, thumbnailService, currentModel]);
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, pendingExtractedBundle, models, thumbnailService]);
+
+  const handleCloseSaveDialog = useCallback(() => {
+    setIsSaveDialogOpen(false);
+    setPendingExtractedBundle(undefined);
+    setSaveDialogDefaults(null);
+  }, []);
   
   /**
    * Handle animation save
@@ -1058,7 +1120,7 @@ function App() {
                   <Button
                     variant="primary"
                     size="md"
-                    onClick={handleSaveModel}
+                    onClick={handleOpenSaveDialog}
                     disabled={isSaving}
                     loading={isSaving}
                     title="Save model to library"
@@ -1396,7 +1458,14 @@ function App() {
           description: '',
         } : undefined}
       />
+      <SaveModelDialog
+        isOpen={isSaveDialogOpen}
+        onClose={handleCloseSaveDialog}
+        onSave={handleSaveModelConfirm}
+        defaults={saveDialogDefaults}
+      />
       <BackfillProgressToast progress={backfillProgress} />
+
     </MainLayout>
   );
 }
