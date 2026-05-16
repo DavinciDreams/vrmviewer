@@ -9,7 +9,7 @@ import { VRM } from '@pixiv/three-vrm';
 import { useModelStore } from '../../store/modelStore';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useAnimationStore } from '../../store/animationStore';
-import { initializeCameraManager, cameraManager } from '../../core/three/scene/CameraManager';
+import { initializeCameraManager, cameraManager, disposeCameraManager } from '../../core/three/scene/CameraManager';
 import { initializeLightingManager, disposeLightingManager } from '../../core/three/scene/LightingManager';
 import { initializeSceneManager, disposeSceneManager } from '../../core/three/scene/SceneManager';
 import { captureThumbnail } from '../../utils/thumbnailUtils';
@@ -61,7 +61,12 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const animationFrameRef = useRef<number | null>(null);
 
   // Store state
-  const { currentModel, isLoading: vrmLoading, metadata } = useModelStore();
+  const {
+    currentModel,
+    isLoading: vrmLoading,
+    error: modelError,
+    metadata,
+  } = useModelStore();
   const {
     isPlaying,
     loop,
@@ -77,7 +82,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
 
   // Local state
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
-  const [error] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const [isWireframe, setIsWireframe] = useState<boolean>(false);
   const [previousModelUuid, setPreviousModelUuid] = useState<string | null>(null);
@@ -238,6 +242,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
           if (camManager) {
             cameraRef.current = camManager.getCamera();
           }
+          setIsInitialized(true);
           
           // Disconnect observer after initialization
           resizeObserver.disconnect();
@@ -266,8 +271,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       onCanvasRef(canvasRef.current);
     }
 
-    setIsInitialized(true);
-
     return () => {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -275,9 +278,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       if (rendererRef.current) {
         rendererRef.current.dispose();
       }
-      if (cameraManager) {
-        cameraManager.dispose();
-      }
+      disposeCameraManager();
       disposeLightingManager();
       disposeSceneManager();
     };
@@ -308,8 +309,9 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
    * Add VRM to scene when loaded
    */
   useEffect(() => {
-    if (currentModel && isInitialized && sceneRef.current) {
-      // Clear previous models (keep lights)
+    if (!isInitialized || !sceneRef.current) return;
+
+    const clearSceneModels = () => {
       const childrenToRemove: THREE.Object3D[] = [];
       sceneRef.current!.children.forEach(child => {
         if (!(child instanceof THREE.Light)) {
@@ -336,6 +338,14 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
           }
         });
       });
+    };
+
+    clearSceneModels();
+
+    if (currentModel) {
+      currentModel.scene.position.set(0, 0, 0);
+      currentModel.scene.scale.setScalar(1);
+      currentModel.scene.updateMatrixWorld(true);
 
       // Add VRM to scene
       sceneRef.current!.add(currentModel.scene);
@@ -347,12 +357,17 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       
       // Center VRM
       currentModel.scene.position.sub(center);
-      currentModel.scene.position.y = -box.min.y;
       
       // Scale to reasonable height
       const targetHeight = 1.6; // meters
-      const scale = targetHeight / size.y;
+      const scale = size.y > 0 ? targetHeight / size.y : 1;
       currentModel.scene.scale.setScalar(scale);
+      currentModel.scene.updateMatrixWorld(true);
+
+      const fittedBox = new THREE.Box3().setFromObject(currentModel.scene);
+      currentModel.scene.position.y -= fittedBox.min.y;
+      currentModel.scene.updateMatrixWorld(true);
+      cameraManager?.frameObject(currentModel.scene);
 
       // Notify parent (only if VRM object is available)
       if (onVRMLoaded && currentModel.vrm) {
@@ -456,20 +471,20 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Error indicator */}
-      {error && (
+      {modelError && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
           <div className="text-center">
             <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-red-400 text-sm mb-2">Error loading model</p>
-            <p className="text-gray-400 text-xs">{error}</p>
+            <p className="text-gray-400 text-xs">{modelError}</p>
           </div>
         </div>
       )}
 
       {/* Drop zone indicator */}
-      {!currentModel && !vrmLoading && !error && (
+      {!currentModel && !vrmLoading && !modelError && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
             <svg className="w-16 h-16 text-gray-600 mx-auto mb-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -481,7 +496,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Playback info overlay */}
-      {currentModel && !vrmLoading && !error && (
+      {currentModel && !vrmLoading && !modelError && (
         <div className="absolute bottom-4 left-4 bg-black/60 text-white px-3 py-2 rounded text-xs">
           <div className="flex items-center gap-2">
             {isPlaying && (

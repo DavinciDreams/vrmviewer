@@ -13,6 +13,22 @@ type RemoteModelRecord = Omit<ModelRecord, 'data' | 'createdAt' | 'updatedAt'> &
   dataBase64?: string;
 };
 
+export type RemoteModelSummaryQuery = DatabaseQueryOptions & {
+  assetKind?: 'all' | 'models' | 'textures';
+  listing?: 'all' | 'live' | 'draft' | 'failed' | 'unlisted';
+  packSlug?: string;
+  sort?: 'name' | 'recent' | 'oldest' | 'size' | 'listed' | 'unlisted';
+};
+
+export type RemoteModelSummaryResult = DatabaseOperationResult<(Omit<ModelRecord, 'data'> & { data?: undefined })[]> & {
+  meta?: {
+    total: number;
+    offset: number;
+    limit: number;
+    hasMore: boolean;
+  };
+};
+
 function getApiBaseUrl(): string {
   return (import.meta.env.VITE_ASSET_LIBRARY_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api';
 }
@@ -163,12 +179,27 @@ export class RemoteModelService {
     };
   }
 
-  async listModelSummaries(): Promise<DatabaseOperationResult<(Omit<ModelRecord, 'data'> & { data?: undefined })[]>> {
+  async listModelSummaries(query?: RemoteModelSummaryQuery): Promise<RemoteModelSummaryResult> {
     try {
       await this.initialize();
-      const response = await fetch(`${this.baseUrl}/models`);
-      const value = await readJsonResponse<{ success: true; data: RemoteModelRecord[] }>(response);
-      return { success: true, data: value.data.map(normalizeSummary) };
+      const params = new URLSearchParams();
+      if (query?.limit) params.set('limit', String(query.limit));
+      if (query?.offset) params.set('offset', String(query.offset));
+      if (query?.search) params.set('search', query.search);
+      if (query?.format) params.set('format', query.format);
+      if (query?.category) params.set('category', query.category);
+      if (query?.assetKind) params.set('assetKind', query.assetKind);
+      if (query?.listing) params.set('listing', query.listing);
+      if (query?.packSlug) params.set('packSlug', query.packSlug);
+      if (query?.sort) params.set('sort', query.sort);
+      const suffix = params.size ? `?${params.toString()}` : '';
+      const response = await fetch(`${this.baseUrl}/models${suffix}`);
+      const value = await readJsonResponse<{
+        success: true;
+        data: RemoteModelRecord[];
+        meta?: RemoteModelSummaryResult['meta'];
+      }>(response);
+      return { success: true, data: value.data.map(normalizeSummary), meta: value.meta };
     } catch (error) {
       return errorResult('Failed to list server model library', error);
     }

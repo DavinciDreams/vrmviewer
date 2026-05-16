@@ -172,6 +172,8 @@ export class GLTFLoaderWrapper {
     const animations = gltf.animations || [];
     const materials: THREE.Material[] = [];
     const textures: THREE.Texture[] = [];
+
+    this.postProcessSceneMaterials(scene);
     
     // Extract materials from scene
     scene.traverse((object) => {
@@ -234,6 +236,39 @@ export class GLTFLoaderWrapper {
       materials,
       textures,
     };
+  }
+
+  /**
+   * Generated foliage/card assets may omit glTF alphaMode even though the
+   * base color texture has transparent pixels. Alpha test restores cutout
+   * previews without introducing transparent-object sorting issues.
+   */
+  private postProcessSceneMaterials(scene: THREE.Object3D): void {
+    const seen = new Set<string>();
+
+    scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh) || !object.material) return;
+
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        if (!material || seen.has(material.uuid)) continue;
+        seen.add(material.uuid);
+        this.postProcessMaterial(material);
+      }
+    });
+  }
+
+  private postProcessMaterial(material: THREE.Material): void {
+    const texturedMaterial = material as THREE.Material & {
+      map?: THREE.Texture | null;
+      alphaTest?: number;
+      transparent?: boolean;
+    };
+
+    if (texturedMaterial.map && !texturedMaterial.transparent && !texturedMaterial.alphaTest) {
+      texturedMaterial.alphaTest = 0.5;
+      texturedMaterial.needsUpdate = true;
+    }
   }
 
   /**

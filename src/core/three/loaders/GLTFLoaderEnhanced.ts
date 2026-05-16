@@ -206,6 +206,8 @@ export class GLTFLoaderEnhanced {
     const scene = gltf.scene;
     const animations = gltf.animations || [];
 
+    this.postProcessSceneMaterials(scene);
+
     // Extract materials
     const materials = this.extractMaterials(gltf);
 
@@ -295,6 +297,55 @@ export class GLTFLoaderEnhanced {
     });
 
     return materials;
+  }
+
+  /**
+   * Some generated foliage GLBs ship PNG/WebP cutout textures without
+   * declaring glTF alphaMode. Three then treats transparent texture pixels as
+   * opaque dark cards. Give textured opaque materials a conservative alpha
+   * test so leaf/card assets preview like they do in game engines.
+   */
+  private postProcessSceneMaterials(scene: THREE.Object3D): void {
+    const seen = new Set<string>();
+
+    scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh) || !object.material) return;
+
+      object.frustumCulled = false;
+      object.geometry.computeBoundingBox();
+      object.geometry.computeBoundingSphere();
+
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        if (!material || seen.has(material.uuid)) continue;
+        seen.add(material.uuid);
+        this.postProcessMaterial(material);
+      }
+    });
+  }
+
+  private postProcessMaterial(material: THREE.Material): void {
+    const texturedMaterial = material as THREE.Material & {
+      map?: THREE.Texture | null;
+      alphaTest?: number;
+      transparent?: boolean;
+      side?: THREE.Side;
+    };
+
+    if (material instanceof THREE.MeshStandardMaterial && material.map && material.metalness > 0.5) {
+      material.metalness = 0;
+      material.needsUpdate = true;
+    }
+
+    if (texturedMaterial.map && texturedMaterial.side !== THREE.DoubleSide) {
+      texturedMaterial.side = THREE.DoubleSide;
+      texturedMaterial.needsUpdate = true;
+    }
+
+    if (texturedMaterial.map && texturedMaterial.transparent && !texturedMaterial.alphaTest) {
+      texturedMaterial.alphaTest = 0.5;
+      texturedMaterial.needsUpdate = true;
+    }
   }
 
   /**

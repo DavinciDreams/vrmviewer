@@ -14,8 +14,8 @@ export const MODEL_EXTENSIONS: Record<ModelFormat, string[]> = {
   gltf: ['.gltf'],
   glb: ['.glb'],
   fbx: ['.fbx'],
-  bvh: ['.bvh'],
-  vrma: ['.vrma'],
+  bvh: [],
+  vrma: [],
 };
 
 /**
@@ -53,10 +53,10 @@ export const FILE_SIGNATURES: Record<string, Uint8Array> = {
  * File Size Limits (in bytes)
  */
 export const FILE_SIZE_LIMITS: Record<string, number> = {
-  vrm: 100 * 1024 * 1024, // 100 MB
-  gltf: 100 * 1024 * 1024, // 100 MB
-  glb: 100 * 1024 * 1024, // 100 MB
-  fbx: 200 * 1024 * 1024, // 200 MB
+  vrm: 512 * 1024 * 1024, // 512 MB
+  gltf: 512 * 1024 * 1024, // 512 MB
+  glb: 512 * 1024 * 1024, // 512 MB
+  fbx: 512 * 1024 * 1024, // 512 MB
   bvh: 50 * 1024 * 1024, // 50 MB
   vrma: 50 * 1024 * 1024, // 50 MB
 };

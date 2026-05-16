@@ -1,11 +1,9 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
 import { VRMViewer, VRMViewerHandle } from './components/viewer/VRMViewer';
 import { ThumbnailCapture } from './components/viewer/ThumbnailCapture';
 import { DropZone } from './components/dragdrop/DropZone';
 import { FilePreview } from './components/dragdrop/FilePreview';
-import { AnimationControls } from './components/controls/AnimationControls';
-import { PlaybackControls } from './components/controls/PlaybackControls';
 import { ModelControls } from './components/controls/ModelControls';
 import { CameraControls } from './components/controls/CameraControls';
 import { ExpressionPanel } from './components/controls/ExpressionPanel';
@@ -20,6 +18,7 @@ import {
   type SaveModelDialogDefaults,
   type SaveModelFormData,
 } from './components/database/SaveModelDialog';
+import { AssetInfoPanel } from './components/database/AssetInfoPanel';
 import { Button } from './components/ui/Button';
 import { BackfillProgressToast } from './components/ui/BackfillProgressToast';
 import { useModel } from './hooks/useModel';
@@ -44,7 +43,11 @@ import type { ExtractedBundle } from './core/database/services/ModelService';
 import { getPreferencesService } from './core/database/services/PreferencesService';
 import { parseDataUrl } from './utils/thumbnailUtils';
 import * as THREE from 'three';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { AnimationRecord, ModelRecord } from './types/database.types';
+
+type LoadedModelRecord = ModelRecord | (Omit<ModelRecord, 'data'> & { data?: undefined });
+const LOD_ORDER = ['lod0', 'lod1', 'lod2', 'lod3'] as const;
 
 /**
  * Type guard to check if result has data property
@@ -60,13 +63,60 @@ function hasSuccessAndData<T>(result: unknown): result is { success: boolean; da
   return typeof result === 'object' && result !== null && 'success' in result && 'data' in result && (result as { success: boolean }).success === true;
 }
 
+interface ControlSectionProps {
+  title: string;
+  icon: ReactNode;
+  children: ReactNode;
+}
+
+const ControlSection = ({ title, icon, children }: ControlSectionProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-gray-700 bg-gray-800/80">
+      <button
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        className="flex w-full items-center justify-between px-3 py-2 text-sm text-gray-200 hover:bg-gray-700/60"
+        aria-expanded={isOpen}
+      >
+        <span className="flex items-center gap-2">
+          {icon}
+          {title}
+        </span>
+        <svg
+          className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
 function App() {
   // Model (format-agnostic — replaces the deprecated useVRM)
-  const { currentModel, isLoading, error, metadata, loadModelFromFile, clearCurrentModel } = useModel();
+  const {
+    currentModel,
+    isLoading,
+    error,
+    metadata,
+    loadFromURL: loadModelFromURL,
+    loadModelFromFile,
+    clearCurrentModel,
+  } = useModel();
   // Playback
-  const { play, pause, stop, seek, setSpeed, toggleLoop } = usePlayback();
+  const { play } = usePlayback();
   // Animation
-  const { currentAnimation, loadFromFile: loadAnimationFromFile, play: playAnimation, pause: pauseAnimation, stop: stopAnimation, setSpeed: setAnimationSpeed } = useAnimation();
+  const { currentAnimation, loadFromFile: loadAnimationFromFile, play: playAnimation } = useAnimation();
   // Idle Animation
   const { start: startIdleAnimation, stop: stopIdleAnimation } = useIdleAnimation();
   // Blend Shapes
@@ -86,6 +136,10 @@ function App() {
   // UI State
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isModelViewerOpen, setIsModelViewerOpen] = useState(false);
+  const [bottomGeneratePrompt, setBottomGeneratePrompt] = useState('');
+  const [isBottomGenerating, setIsBottomGenerating] = useState(false);
   const [isAnimationEditorOpen, setIsAnimationEditorOpen] = useState(false);
   const [pendingAnimationFile, setPendingAnimationFile] = useState<File | null>(null);
   const [pendingAnimationClip, setPendingAnimationClip] = useState<import('three').AnimationClip | null>(null);
@@ -99,17 +153,10 @@ function App() {
   
   // Track current model UUID for thumbnail generation
   const [currentModelUuid, setCurrentModelUuid] = useState<string | null>(null);
+  const [currentModelRecord, setCurrentModelRecord] = useState<LoadedModelRecord | null>(null);
+  const [lodSiblingRecords, setLodSiblingRecords] = useState<LoadedModelRecord[]>([]);
+  const [modelLoadStatus, setModelLoadStatus] = useState<string | null>(null);
 
-  // Camera controls panel collapsed by default (it's a tertiary control)
-  const [isCameraPanelOpen, setIsCameraPanelOpen] = useState(false);
-  // Expression / idle-motion panels — collapsed by default to keep the
-  // viewer uncluttered for first-time users.
-  const [isExpressionPanelOpen, setIsExpressionPanelOpen] = useState(false);
-  const [isIdlePanelOpen, setIsIdlePanelOpen] = useState(false);
-  const [isLightingPanelOpen, setIsLightingPanelOpen] = useState(false);
-  const [isPosePanelOpen, setIsPosePanelOpen] = useState(false);
-  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
-  
   // Track thumbnail capture state for visual feedback
   const [isCapturing, setIsCapturing] = useState(false);
   
@@ -208,6 +255,7 @@ function App() {
             // subsequent thumbnail-capture flows.
             if (loaded) {
               setCurrentModelUuid(rec.uuid);
+              setCurrentModelRecord(rec);
             } else {
               console.warn('[resume] last model loaded as empty — skipping UUID pin');
             }
@@ -479,6 +527,7 @@ function App() {
       // Clear current model and unsaved state before loading new model
       clearCurrentModel();
       setCurrentModelUuid(null);
+      setCurrentModelRecord(null);
       setUnsavedModelFile(null);
       setUnsavedModelData(null);
       setUnsavedThumbnailData(null);
@@ -643,6 +692,7 @@ function App() {
 
       const modelUuid = result.data.uuid;
       setCurrentModelUuid(modelUuid);
+      setCurrentModelRecord(result.data as ModelRecord);
 
       // Remember this as the last loaded model so the next session resumes here.
       getPreferencesService()
@@ -811,30 +861,127 @@ function App() {
    * Handle model load from library
    */
   const handleModelLoad = useCallback(async (modelId: string) => {
+    setIsModelViewerOpen(true);
     // Clear unsaved state when loading from library
+    setModelLoadStatus('Preparing library model...');
     setUnsavedModelFile(null);
     setUnsavedModelData(null);
     setUnsavedThumbnailData(null);
+    setCurrentModelRecord(null);
+    setLodSiblingRecords([]);
     
     // Set current model UUID to enable thumbnail re-capture
     setCurrentModelUuid(modelId);
 
-    const result = await models.getByUuid(modelId);
-    if (hasSuccessAndData<ModelRecord>(result)) {
-      const modelRecord = result.data;
-      // Create a File from ArrayBuffer data
-      const file = new File([modelRecord.data], `${modelRecord.name}.${modelRecord.format}`, {
-        type: modelRecord.format === 'vrm' ? 'application/octet-stream' : 'model/gltf-binary',
-      });
-      // Load model
-      await loadModelFromFile(file);
+    const modelResult = await models.getByUuid(modelId);
+    const modelRecord = hasSuccessAndData<ModelRecord>(modelResult)
+      ? modelResult.data
+      : undefined;
+
+    if (modelRecord) {
+      setModelLoadStatus(`Loading ${modelRecord.name}...`);
+
+      const fileVersion = modelRecord.updatedAt ? String(modelRecord.updatedAt) : modelRecord.sha256 ?? '';
+      const fileUrl = `/api/models/${encodeURIComponent(modelRecord.uuid)}/file?format=${encodeURIComponent(modelRecord.format)}&name=${encodeURIComponent(modelRecord.name)}&v=${encodeURIComponent(fileVersion)}`;
+      const loaded = await loadModelFromURL(fileUrl);
+      if (!loaded) {
+        setModelLoadStatus(`Failed to load ${modelRecord.name}`);
+        return;
+      }
+
+      setCurrentModelRecord(modelRecord);
+      setModelLoadStatus(null);
 
       // Remember this as the last loaded model for next session.
       getPreferencesService()
         .setPreference('lastModelUuid', modelId)
         .catch((err) => console.warn('[resume] lastModelUuid save failed:', err));
+    } else {
+      setModelLoadStatus('Model record could not be read from the library');
     }
-  }, [models, loadModelFromFile]);
+  }, [models, loadModelFromURL]);
+
+  useEffect(() => {
+    if (!currentModelRecord?.assetGroupId) {
+      return;
+    }
+
+    let isCancelled = false;
+    void (async () => {
+      const result = await models.getAllSummaries();
+      if (isCancelled || !hasData<LoadedModelRecord[]>(result) || !result.data) return;
+
+      const siblings = result.data
+        .filter((model) => model.assetGroupId === currentModelRecord.assetGroupId && model.lodTier)
+        .sort((a, b) => {
+          const aIndex = LOD_ORDER.indexOf(a.lodTier as (typeof LOD_ORDER)[number]);
+          const bIndex = LOD_ORDER.indexOf(b.lodTier as (typeof LOD_ORDER)[number]);
+          return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+        });
+
+      setLodSiblingRecords(siblings);
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentModelRecord?.assetGroupId, models]);
+
+  const loadLodSibling = useCallback(async (direction: 1 | -1) => {
+    if (!currentModelRecord?.assetGroupId || !currentModelRecord.lodTier) return;
+
+    const summariesResult = lodSiblingRecords.length > 0 ? null : await models.getAllSummaries();
+    const siblings = lodSiblingRecords.length > 0
+      ? lodSiblingRecords
+      : hasData<LoadedModelRecord[]>(summariesResult) && summariesResult.data
+        ? summariesResult.data
+          .filter((model) => model.assetGroupId === currentModelRecord.assetGroupId && model.lodTier)
+          .sort((a, b) => {
+            const aIndex = LOD_ORDER.indexOf(a.lodTier as (typeof LOD_ORDER)[number]);
+            const bIndex = LOD_ORDER.indexOf(b.lodTier as (typeof LOD_ORDER)[number]);
+            return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+          })
+        : [];
+
+    if (siblings.length <= 1) return;
+
+    const currentIndex = siblings.findIndex((model) => model.uuid === currentModelRecord.uuid);
+    const nextIndex = currentIndex === -1
+      ? 0
+      : (currentIndex + direction + siblings.length) % siblings.length;
+    const next = siblings[nextIndex];
+
+    if (next?.uuid && next.uuid !== currentModelRecord.uuid) {
+      await handleModelLoad(next.uuid);
+    }
+  }, [currentModelRecord, handleModelLoad, lodSiblingRecords, models]);
+
+  const currentLodIndex = useMemo(() => {
+    if (!currentModelRecord || lodSiblingRecords.length === 0) return -1;
+    return lodSiblingRecords.findIndex((model) => model.uuid === currentModelRecord.uuid);
+  }, [currentModelRecord, lodSiblingRecords]);
+
+  useEffect(() => {
+    if (!currentModelRecord?.assetGroupId) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isFormField = tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable;
+      if (isFormField) return;
+
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown' || (event.key === 'Tab' && !event.shiftKey)) {
+        event.preventDefault();
+        void loadLodSibling(1);
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey)) {
+        event.preventDefault();
+        void loadLodSibling(-1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentModelRecord?.assetGroupId, loadLodSibling]);
   
   /**
    * Handle model delete from library
@@ -847,7 +994,9 @@ function App() {
       // Clear current model from viewer if deleted model is currently loaded
       if (currentModelUuid === modelId) {
         clearCurrentModel();
+        setIsModelViewerOpen(false);
         setCurrentModelUuid(null);
+        setCurrentModelRecord(null);
         // Don't keep pointing the resume flow at a model that no longer exists.
         getPreferencesService()
           .deletePreference('lastModelUuid')
@@ -885,6 +1034,47 @@ function App() {
     if (!currentModel) return;
     
     try {
+      setIsExporting(true);
+      if (options.destination === 'game' || options.destination === 'store' || options.destination === 'gumroad_unreal') {
+        if (!currentModelUuid) {
+          console.error('Cannot export to store without a saved model UUID');
+          return;
+        }
+        const hillDestination = options.destination === 'gumroad_unreal' ? 'store' : options.destination;
+        const response = await fetch('/api/hill/export-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            modelUuid: currentModelUuid,
+            destination: hillDestination,
+            name: options.name,
+            description: options.description,
+            author: options.author,
+            version: options.version,
+            category: options.category,
+            keywords: (options.keywords ?? '')
+              .split(',')
+              .map((keyword) => keyword.trim())
+              .filter(Boolean),
+            license: options.license,
+            visibility: options.visibility,
+            generateLods: options.generateLods !== false,
+            withKtx2: options.withKtx2 !== false,
+            withLod3: options.withLod3 !== false,
+            marketplacePackage: options.destination === 'gumroad_unreal' || options.destination === 'store',
+            createGumroadDraft: options.destination === 'gumroad_unreal' && options.createGumroadDraft === true,
+            autoUploadGumroad: options.destination === 'gumroad_unreal' && options.autoUploadGumroad === true,
+          }),
+        });
+        const result = await response.json() as { success?: boolean; error?: { message?: string }; data?: { id: string } };
+        if (!response.ok || !result.success) {
+          throw new Error(result.error?.message ?? `Export request failed with ${response.status}`);
+        }
+        console.log('Hill export job queued:', result.data?.id);
+        setIsExportDialogOpen(false);
+        return;
+      }
+
       if (options.format === 'vrm') {
         // Build VRM-specific overrides from dialog selections.
         const result = await exportVRM(currentModel.scene, {
@@ -949,8 +1139,10 @@ function App() {
       setIsExportDialogOpen(false);
     } catch (err) {
       console.error('Export failed:', err);
+    } finally {
+      setIsExporting(false);
     }
-  }, [currentModel, currentAnimation, exportVRM, exportVRMA, exportGLTF]);
+  }, [currentModel, currentAnimation, currentModelUuid, exportVRM, exportVRMA, exportGLTF]);
   
   /**
    * Handle thumbnail capture (manual re-capture)
@@ -968,31 +1160,16 @@ function App() {
       
       // If model is saved, update thumbnail in database
       if (currentModelUuid) {
-        const { format, data } = parseDataUrl(thumbnailDataUrl);
-        
-        // Delete old thumbnail if exists
-        await thumbnailService.deleteThumbnailByTarget(currentModelUuid);
-        
-        // Save new thumbnail
-        const result = await thumbnailService.saveThumbnail({
-          uuid: crypto.randomUUID(),
-          name: `${currentModelUuid}_thumbnail`,
-          type: 'model',
-          targetUuid: currentModelUuid,
-          data,
-          format,
-          width: 256,
-          height: 256,
-          size: data.length,
-          createdAt: new Date(),
+        const updateResult = await models.update(currentModelUuid, {
+          thumbnailDataUrl,
         });
-        
-        if (result.success && result.data) {
-          // Update model record with new thumbnail UUID
-          await models.update(currentModelUuid, {
-            thumbnail: result.data.uuid,
-          });
-          console.log('Thumbnail updated:', result.data.uuid);
+        if (updateResult.success) {
+          window.dispatchEvent(new CustomEvent('vrmviewer:model-thumbnail-updated', {
+            detail: { uuid: currentModelUuid },
+          }));
+          console.log('Thumbnail updated for model:', currentModelUuid);
+        } else {
+          console.error('Failed to update model thumbnail:', updateResult.error);
         }
       } else if (unsavedModelFile) {
         // If model is unsaved, store thumbnail data for later saving
@@ -1004,33 +1181,7 @@ function App() {
     } finally {
       setIsCapturing(false);
     }
-  }, [currentModelUuid, unsavedModelFile, models, thumbnailService]);
-  
-  /**
-   * Handle play
-   */
-  const handlePlay = useCallback(() => {
-    if (currentAnimation) {
-      playAnimation();
-    }
-    play();
-  }, [currentAnimation, playAnimation, play]);
-  
-  /**
-   * Handle pause
-   */
-  const handlePause = useCallback(() => {
-    pauseAnimation();
-    pause();
-  }, [pauseAnimation, pause]);
-  
-  /**
-   * Handle stop
-   */
-  const handleStop = useCallback(() => {
-    stopAnimation();
-    stop();
-  }, [stopAnimation, stop]);
+  }, [currentModelUuid, unsavedModelFile, models]);
   
   /**
    * Handle remove file
@@ -1090,12 +1241,137 @@ function App() {
         .catch((err) => console.warn('[resume] viewerToggles save failed:', err));
     }
   }, []);
+
+  const handleBottomGenerate = useCallback(async () => {
+    const prompt = bottomGeneratePrompt.trim();
+    if (!prompt || isBottomGenerating) return;
+
+    setIsBottomGenerating(true);
+    setModelLoadStatus('Queueing Hill generation...');
+    try {
+      const response = await fetch('/api/hill/conjure-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          mode: 'create',
+          exportTarget: 'library',
+          generateLods: true,
+        }),
+      });
+      const result = await response.json() as { success?: boolean; error?: { message?: string }; data?: { id?: string } };
+      if (!response.ok || !result.success) {
+        throw new Error(result.error?.message ?? `Request failed with ${response.status}`);
+      }
+      setBottomGeneratePrompt('');
+      setModelLoadStatus(`Queued Hill generation${result.data?.id ? `: ${result.data.id}` : ''}`);
+      window.dispatchEvent(new CustomEvent('vrmviewer:hill-conjure-queued'));
+      window.setTimeout(() => setModelLoadStatus(null), 4000);
+    } catch (err) {
+      setModelLoadStatus(err instanceof Error ? err.message : 'Failed to queue Hill generation');
+      window.setTimeout(() => setModelLoadStatus(null), 6000);
+    } finally {
+      setIsBottomGenerating(false);
+    }
+  }, [bottomGeneratePrompt, isBottomGenerating]);
   
   const hasModel = !!currentModel;
-  const hasAnimation = !!currentAnimation;
+  const exportMetadata = useMemo(() => (
+    currentModelRecord ? {
+      format: currentModelRecord.format === 'fbx' ? 'glb' as const : currentModelRecord.format,
+      name: currentModelRecord.displayName || currentModelRecord.name,
+      description: currentModelRecord.description ?? '',
+      author: currentModelRecord.author ?? '',
+      version: currentModelRecord.version ?? '1.0',
+      category: currentModelRecord.category ?? '',
+      tags: currentModelRecord.tags ?? [],
+      license: currentModelRecord.license ?? '',
+      visibility: currentModelRecord.license === 'cc0' ? 'public_cc0' as const : 'platform_curated' as const,
+    } : {
+      name: metadata?.name || 'model_export',
+      author: metadata?.author || '',
+      version: metadata?.version || '',
+      format: (metadata?.format === 'vrm' || metadata?.format === 'gltf' || metadata?.format === 'glb'
+        ? metadata.format
+        : 'glb') as 'vrm' | 'gltf' | 'glb',
+    }
+  ), [currentModelRecord, metadata]);
+  const controlsPanel = hasModel ? (
+    <div className="space-y-3">
+      <ControlSection
+        title="Expression"
+        icon={(
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
+      >
+        <ExpressionPanel />
+      </ControlSection>
+
+      <ControlSection
+        title="Idle Motion"
+        icon={(
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        )}
+      >
+        <IdleAnimationPanel />
+      </ControlSection>
+
+      <ControlSection
+        title="Pose"
+        icon={(
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
+      >
+        <PosePanel vrm={currentModel?.vrm ?? null} />
+      </ControlSection>
+
+      <ControlSection
+        title="Info"
+        icon={(
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
+      >
+        <VRMInfoPanel vrm={currentModel?.vrm ?? null} />
+      </ControlSection>
+
+      <ControlSection
+        title="Lighting"
+        icon={(
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        )}
+      >
+        <LightingPanel />
+      </ControlSection>
+
+      <ControlSection
+        title="Camera"
+        icon={(
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        )}
+      >
+        <CameraControls />
+      </ControlSection>
+    </div>
+  ) : (
+    <p className="text-sm text-gray-400">Load a model to use viewer controls.</p>
+  );
   
   return (
     <MainLayout
+      controlsPanel={controlsPanel}
       onAnimationPlay={handleAnimationPlay}
       onAnimationDelete={handleAnimationDelete}
       onAnimationUpdate={handleAnimationUpdate}
@@ -1103,6 +1379,7 @@ function App() {
       onModelDelete={handleModelDelete}
       onModelUpdate={handleModelUpdate}
       onExport={() => setIsExportDialogOpen(true)}
+      isModelViewerOpen={isModelViewerOpen}
     >
       <div className="relative flex flex-col h-full">
         {/* Viewer */}
@@ -1111,9 +1388,26 @@ function App() {
             ref={vrmViewerRef}
             onThumbnailCaptured={handleAutoThumbnailCaptured}
           />
+
+          {(modelLoadStatus || error) && (
+            <div className="absolute top-4 left-1/2 z-20 max-w-sm -translate-x-1/2 rounded-lg border border-gray-700 bg-gray-900/90 px-3 py-2 text-sm text-gray-100 shadow-lg">
+              {modelLoadStatus ?? error}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsModelViewerOpen(false)}
+            className="absolute left-4 top-4 z-30 rounded-lg border border-gray-700 bg-gray-900/90 px-3 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-gray-800"
+          >
+            Back to assets
+          </button>
           
           {hasModel && (
             <>
+              <div className="absolute top-4 right-4 z-10">
+                <AssetInfoPanel model={currentModelRecord} />
+              </div>
+
               {/* Save Model Button (only for unsaved models) */}
               {unsavedModelFile && (
                 <div className="absolute top-4 left-4 z-10">
@@ -1144,6 +1438,52 @@ function App() {
                   </Button>
                 </div>
               )}
+
+              {currentModelRecord?.lodTier && (
+                <div className="absolute top-4 left-4 z-10 rounded-lg border border-gray-700 bg-gray-900/80 px-3 py-2 text-xs text-white shadow-lg">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadLodSibling(-1)}
+                      disabled={lodSiblingRecords.length <= 1}
+                      title="Previous LOD"
+                      aria-label="Previous LOD"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gray-800 text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <div className="min-w-[5.5rem]">
+                      <div className="font-semibold uppercase">{currentModelRecord.lodTier}</div>
+                      <div className="text-gray-300">
+                        {currentModelRecord.polycount ? `${currentModelRecord.polycount.toLocaleString()} polys` : 'LOD variant'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadLodSibling(1)}
+                      disabled={lodSiblingRecords.length <= 1}
+                      title="Next LOD"
+                      aria-label="Next LOD"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gray-800 text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                  {lodSiblingRecords.length > 1 && currentLodIndex >= 0 && (
+                    <div className="mt-1 text-center text-[11px] text-gray-400">
+                      {currentLodIndex + 1} / {lodSiblingRecords.length}
+                    </div>
+                  )}
+                  {(currentModelRecord.qualityTier || currentModelRecord.reviewStatus) && (
+                    <div className="mt-1 text-gray-300 capitalize">
+                      {[currentModelRecord.qualityTier, currentModelRecord.reviewStatus]
+                        .filter(Boolean)
+                        .map((value) => String(value).replace(/_/g, ' '))
+                        .join(' · ')}
+                    </div>
+                  )}
+                </div>
+              )}
               
               <ThumbnailCapture
                 onCapture={handleThumbnailCapture}
@@ -1153,23 +1493,6 @@ function App() {
               
               {/* Controls Overlay */}
               <div className="absolute bottom-4 left-4 right-4 space-y-3">
-                <AnimationControls
-                  onPlay={handlePlay}
-                  onPause={handlePause}
-                  onStop={handleStop}
-                  onSpeedChange={(speed) => {
-                    setSpeed(speed);
-                    setAnimationSpeed(speed);
-                  }}
-                  onLoopToggle={toggleLoop}
-                />
-                
-                {hasAnimation && (
-                  <PlaybackControls
-                    onSeek={seek}
-                  />
-                )}
-                
                 <ModelControls
                   isVisible={isModelVisible}
                   onVisibilityToggle={handleVisibilityToggle}
@@ -1177,183 +1500,14 @@ function App() {
                   onWireframeToggle={handleWireframeToggle}
                   onResetPose={handleResetPose}
                   onResetCamera={handleResetCamera}
+                  onSend={() => setIsExportDialogOpen(true)}
+                  generatePrompt={bottomGeneratePrompt}
+                  onGeneratePromptChange={setBottomGeneratePrompt}
+                  onGenerate={handleBottomGenerate}
+                  isGenerating={isBottomGenerating}
                 />
               </div>
 
-              {/* Side-panels (collapsible, stacked top-right) */}
-              <div className="absolute top-4 right-4 z-10 w-64 space-y-2">
-                {/* Expression / blend shapes */}
-                <div>
-                  <button
-                    onClick={() => setIsExpressionPanelOpen((v) => !v)}
-                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
-                    aria-expanded={isExpressionPanelOpen}
-                    aria-controls="expression-panel"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Expression
-                    </span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isExpressionPanelOpen ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {/* Always render — `aria-controls` references must point at
-                      a live DOM node per ARIA spec. `hidden` plus the
-                      conditional inner mount keeps the cost low. */}
-                  <div id="expression-panel" hidden={!isExpressionPanelOpen}>
-                    {isExpressionPanelOpen && <ExpressionPanel />}
-                  </div>
-                </div>
-
-                {/* Idle motion */}
-                <div>
-                  <button
-                    onClick={() => setIsIdlePanelOpen((v) => !v)}
-                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
-                    aria-expanded={isIdlePanelOpen}
-                    aria-controls="idle-panel"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Idle Motion
-                    </span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isIdlePanelOpen ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  <div id="idle-panel" hidden={!isIdlePanelOpen}>
-                    {isIdlePanelOpen && <IdleAnimationPanel />}
-                  </div>
-                </div>
-
-                {/* Pose */}
-                <div>
-                  <button
-                    onClick={() => setIsPosePanelOpen((v) => !v)}
-                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
-                    aria-expanded={isPosePanelOpen}
-                    aria-controls="pose-panel"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Pose
-                    </span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isPosePanelOpen ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  <div id="pose-panel" hidden={!isPosePanelOpen}>
-                    {isPosePanelOpen && <PosePanel vrm={currentModel?.vrm ?? null} />}
-                  </div>
-                </div>
-
-                {/* VRM info */}
-                <div>
-                  <button
-                    onClick={() => setIsInfoPanelOpen((v) => !v)}
-                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
-                    aria-expanded={isInfoPanelOpen}
-                    aria-controls="info-panel"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Info
-                    </span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isInfoPanelOpen ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  <div id="info-panel" hidden={!isInfoPanelOpen}>
-                    {isInfoPanelOpen && <VRMInfoPanel vrm={currentModel?.vrm ?? null} />}
-                  </div>
-                </div>
-
-                {/* Lighting */}
-                <div>
-                  <button
-                    onClick={() => setIsLightingPanelOpen((v) => !v)}
-                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
-                    aria-expanded={isLightingPanelOpen}
-                    aria-controls="lighting-panel"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                      Lighting
-                    </span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isLightingPanelOpen ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  <div id="lighting-panel" hidden={!isLightingPanelOpen}>
-                    {isLightingPanelOpen && <LightingPanel />}
-                  </div>
-                </div>
-
-                {/* Camera */}
-                <div>
-                  <button
-                    onClick={() => setIsCameraPanelOpen((v) => !v)}
-                    className="w-full px-3 py-2 mb-2 bg-gray-800/90 backdrop-blur-sm rounded-lg text-sm text-gray-200 hover:bg-gray-700/90 transition-colors flex items-center justify-between"
-                    aria-expanded={isCameraPanelOpen}
-                    aria-controls="camera-controls-panel"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                      Camera
-                    </span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isCameraPanelOpen ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  <div id="camera-controls-panel" hidden={!isCameraPanelOpen}>
-                    {isCameraPanelOpen && <CameraControls />}
-                  </div>
-                </div>
-              </div>
             </>
           )}
         </div>
@@ -1444,7 +1598,8 @@ function App() {
         onClose={() => setIsExportDialogOpen(false)}
         onExport={handleExport}
         defaultName={metadata?.name || 'model_export'}
-        isExporting={false}
+        metadata={exportMetadata}
+        isExporting={isExporting}
       />
       
       {/* Animation Editor Dialog */}

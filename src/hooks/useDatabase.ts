@@ -236,11 +236,16 @@ export function useDatabase() {
    * Get every model as a blob-stripped summary — preferred for library
    * listings (no need to pull each record's data ArrayBuffer into memory).
    */
-  const getAllModelSummaries = async () => {
+  const getAllModelSummaries = async (options?: DatabaseQueryOptions & {
+    assetKind?: 'all' | 'models' | 'textures';
+    listing?: 'all' | 'live' | 'draft' | 'failed' | 'unlisted';
+    packSlug?: string;
+    sort?: 'name' | 'recent' | 'oldest' | 'size' | 'listed' | 'unlisted';
+  }) => {
     const svc = modelService;
     if (!svc) return { success: false, error: { type: 'UNKNOWN' as const, message: 'Model service not initialized' } };
     await svc.initialize();
-    return await svc.listModelSummaries();
+    return await svc.listModelSummaries(options);
   };
 
   /**

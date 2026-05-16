@@ -30,8 +30,10 @@ vi.mock('../constants/formats', () => ({
     const supportedFormats = ['vrm', 'gltf', 'glb', 'fbx', 'vrma', 'bvh']
     return supportedFormats.includes(ext)
   },
-  validateFileSize: (file: File) => {
-    const maxSize = 100 * 1024 * 1024 // 100MB
+  validateFileSize: (file: File, format?: string) => {
+    const maxSize = ['vrma', 'bvh'].includes(format ?? '')
+      ? 50 * 1024 * 1024
+      : 512 * 1024 * 1024
     return file.size <= maxSize
   },
   formatFileSize: (bytes: number) => {
@@ -154,8 +156,8 @@ describe('fileUtils', () => {
     })
 
     it('should reject file that exceeds size limit', () => {
-      const largeContent = 'x'.repeat(101 * 1024 * 1024) // > 100MB
-      const file = new File([largeContent], 'large.vrm', { type: 'application/octet-stream' })
+      const file = new File(['content'], 'large.vrm', { type: 'application/octet-stream' })
+      Object.defineProperty(file, 'size', { value: 513 * 1024 * 1024 })
       const result = validateModelFile(file)
 
       expect(result.valid).toBe(false)
@@ -189,8 +191,7 @@ describe('fileUtils', () => {
     })
 
     it('should reject animation file that exceeds size limit', () => {
-      const largeContent = 'x'.repeat(101 * 1024 * 1024) // > 100MB
-      const file = new File([largeContent], 'large.vrma', { type: 'application/octet-stream' })
+      const file = new File([new Uint8Array(51 * 1024 * 1024)], 'large.vrma', { type: 'application/octet-stream' })
       const result = validateAnimationFile(file)
 
       expect(result.valid).toBe(false)

@@ -11,6 +11,7 @@ import { usePlaybackStore } from '../../store/playbackStore';
  */
 export interface PlaybackControlsProps {
   onSeek?: (time: number) => void;
+  layout?: 'bar' | 'panel';
 }
 
 /**
@@ -18,6 +19,7 @@ export interface PlaybackControlsProps {
  */
 export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   onSeek,
+  layout = 'bar',
 }) => {
   // Get playback state from store
   const { currentTime, duration } = usePlaybackStore();
@@ -78,13 +80,22 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     }
   };
 
+  const isPanel = layout === 'panel';
+
   return (
     <div className="bg-gray-800 rounded-lg p-3 border border-gray-700">
-      <div className="flex items-center space-x-4">
+      <div className={isPanel ? 'space-y-2' : 'flex items-center space-x-4'}>
         {/* Current Time */}
-        <span className="text-sm text-white font-mono whitespace-nowrap min-w-[80px]">
-          {formatTimeWithMs(currentTime)}
-        </span>
+        {isPanel ? (
+          <div className="flex items-center justify-between text-sm font-mono">
+            <span className="text-white">{formatTimeWithMs(currentTime)}</span>
+            <span className="text-gray-400">{formatTimeWithMs(duration)}</span>
+          </div>
+        ) : (
+          <span className="text-sm text-white font-mono whitespace-nowrap min-w-[80px]">
+            {formatTimeWithMs(currentTime)}
+          </span>
+        )}
         
         {/* Timeline */}
         <div 
@@ -127,9 +138,11 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         </div>
         
         {/* Duration */}
-        <span className="text-sm text-gray-400 font-mono whitespace-nowrap min-w-[80px]">
-          {formatTimeWithMs(duration)}
-        </span>
+        {!isPanel && (
+          <span className="text-sm text-gray-400 font-mono whitespace-nowrap min-w-[80px]">
+            {formatTimeWithMs(duration)}
+          </span>
+        )}
       </div>
       
       {/* Progress percentage */}

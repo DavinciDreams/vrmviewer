@@ -18,13 +18,22 @@ export const LightingPanel: React.FC<LightingPanelProps> = ({ disabled = false }
   // the user actually sees on screen rather than arbitrary defaults.
   const initial = (() => {
     if (!lightingManager) {
-      return { ambient: 0.6, directional: 0.8, rimEnabled: false, rimIntensity: 0.5 };
+      return {
+        ambient: 0.9,
+        directional: 1.6,
+        rimEnabled: false,
+        rimIntensity: 0.5,
+        studioEnabled: false,
+        whiteBackground: false,
+      };
     }
     return {
       ambient: lightingManager.getAmbientLight().intensity,
       directional: lightingManager.getDirectionalLight().intensity,
       rimEnabled: !!lightingManager.getRimLight(),
       rimIntensity: lightingManager.getRimLight()?.intensity ?? 0.5,
+      studioEnabled: lightingManager.getPreviewMode() === 'studio',
+      whiteBackground: lightingManager.getWhiteBackgroundEnabled(),
     };
   })();
 
@@ -32,6 +41,8 @@ export const LightingPanel: React.FC<LightingPanelProps> = ({ disabled = false }
   const [directional, setDirectional] = useState(initial.directional);
   const [rimEnabled, setRimEnabled] = useState(initial.rimEnabled);
   const [rimIntensity, setRimIntensity] = useState(initial.rimIntensity);
+  const [studioEnabled, setStudioEnabled] = useState(initial.studioEnabled);
+  const [whiteBackground, setWhiteBackground] = useState(initial.whiteBackground);
 
   // Re-sync from the manager every time the panel mounts. The IIFE above
   // runs at construction time, but the manager may be null then (canvas
@@ -48,6 +59,8 @@ export const LightingPanel: React.FC<LightingPanelProps> = ({ disabled = false }
     setDirectional(lightingManager.getDirectionalLight().intensity);
     const rim = lightingManager.getRimLight();
     setRimEnabled(!!rim);
+    setStudioEnabled(lightingManager.getPreviewMode() === 'studio');
+    setWhiteBackground(lightingManager.getWhiteBackgroundEnabled());
     if (rim) {
       setRimIntensity(rim.intensity);
     }
@@ -83,10 +96,52 @@ export const LightingPanel: React.FC<LightingPanelProps> = ({ disabled = false }
     }
   };
 
+  const syncLightingState = () => {
+    if (!lightingManager) return;
+    setAmbient(lightingManager.getAmbientLight().intensity);
+    setDirectional(lightingManager.getDirectionalLight().intensity);
+    setStudioEnabled(lightingManager.getPreviewMode() === 'studio');
+    setWhiteBackground(lightingManager.getWhiteBackgroundEnabled());
+  };
+
+  const handleStudioToggle = (enabled: boolean) => {
+    lightingManager?.setPreviewMode(enabled ? 'studio' : 'standard');
+    syncLightingState();
+  };
+
+  const handleWhiteBackgroundToggle = (enabled: boolean) => {
+    setWhiteBackground(enabled);
+    lightingManager?.setWhiteBackgroundEnabled(enabled);
+  };
+
   return (
     <div className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-white font-medium">Lighting</h3>
+      </div>
+
+      <div className="space-y-2 pb-2 border-b border-gray-700">
+        <label className="flex items-center justify-between gap-3 text-sm text-gray-300">
+          <span>Studio preview</span>
+          <input
+            type="checkbox"
+            checked={studioEnabled}
+            onChange={(e) => handleStudioToggle(e.target.checked)}
+            disabled={disabled}
+            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 disabled:opacity-50"
+          />
+        </label>
+
+        <label className="flex items-center justify-between gap-3 text-sm text-gray-300">
+          <span>White background</span>
+          <input
+            type="checkbox"
+            checked={whiteBackground}
+            onChange={(e) => handleWhiteBackgroundToggle(e.target.checked)}
+            disabled={disabled}
+            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 disabled:opacity-50"
+          />
+        </label>
       </div>
 
       <div className="space-y-1">
@@ -97,7 +152,7 @@ export const LightingPanel: React.FC<LightingPanelProps> = ({ disabled = false }
         <input
           type="range"
           min="0"
-          max="2"
+          max="4"
           step="0.05"
           value={ambient}
           onChange={(e) => handleAmbient(parseFloat(e.target.value))}
@@ -114,7 +169,7 @@ export const LightingPanel: React.FC<LightingPanelProps> = ({ disabled = false }
         <input
           type="range"
           min="0"
-          max="3"
+          max="5"
           step="0.05"
           value={directional}
           onChange={(e) => handleDirectional(parseFloat(e.target.value))}

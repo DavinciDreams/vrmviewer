@@ -60,14 +60,10 @@ export async function captureThumbnail(
         thumbnailRenderer.setClearColor(new THREE.Color(backgroundColor));
       }
 
-      // Clone the scene to avoid modifying the original
-      const clonedScene = cloneScene(scene);
-
-      // Set up camera for thumbnail
-      const thumbnailCamera = setupCameraForThumbnail(camera);
+      const thumbnailCamera = cloneCameraForSquareCapture(camera);
 
       // Render the scene
-      thumbnailRenderer.render(clonedScene, thumbnailCamera);
+      thumbnailRenderer.render(scene, thumbnailCamera);
 
       // Get data URL
       const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
@@ -75,16 +71,6 @@ export async function captureThumbnail(
 
       // Clean up
       thumbnailRenderer.dispose();
-      clonedScene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          if (object.geometry) object.geometry.dispose();
-          if (Array.isArray(object.material)) {
-            object.material.forEach(mat => mat.dispose());
-          } else if (object.material) {
-            object.material.dispose();
-          }
-        }
-      });
 
       resolve(dataUrl);
     } catch (error) {
@@ -94,57 +80,26 @@ export async function captureThumbnail(
 }
 
 /**
- * Clone scene for thumbnail rendering
+ * Clone the active viewer camera for a square thumbnail render.
+ *
+ * Manual capture should reflect the camera the user just positioned. The old
+ * path re-framed the object, which made different camera/capture attempts look
+ * almost identical.
  */
-function cloneScene(scene: THREE.Scene): THREE.Scene {
-  const clonedScene = new THREE.Scene();
-  
-  scene.traverse((object) => {
-    if (object instanceof THREE.Light) {
-      // Clone lights
-      const clonedLight = object.clone();
-      clonedScene.add(clonedLight);
-    } else if (object instanceof THREE.Group || object instanceof THREE.Mesh) {
-      // Clone groups and meshes
-      const cloned = object.clone();
-      clonedScene.add(cloned);
-    }
-  });
-
-  // Copy background if it's a color
-  if (scene.background instanceof THREE.Color) {
-    clonedScene.background = scene.background.clone();
-  }
-
-  return clonedScene;
-}
-
-/**
- * Set up camera for thumbnail rendering
- */
-function setupCameraForThumbnail(camera: THREE.Camera): THREE.Camera {
+function cloneCameraForSquareCapture(camera: THREE.Camera): THREE.Camera {
   if (camera instanceof THREE.PerspectiveCamera) {
     const thumbnailCamera = camera.clone();
-    thumbnailCamera.aspect = 1; // Square aspect ratio for thumbnail
+    thumbnailCamera.aspect = 1;
     thumbnailCamera.updateProjectionMatrix();
     return thumbnailCamera;
   } else if (camera instanceof THREE.OrthographicCamera) {
     const thumbnailCamera = camera.clone();
-    // Adjust frustum for square aspect ratio
-    const frustumSize = thumbnailCamera.right - thumbnailCamera.left;
-    const newSize = frustumSize;
-    thumbnailCamera.left = -newSize / 2;
-    thumbnailCamera.right = newSize / 2;
-    thumbnailCamera.top = newSize / 2;
-    thumbnailCamera.bottom = -newSize / 2;
     thumbnailCamera.updateProjectionMatrix();
     return thumbnailCamera;
   }
 
   // Fallback: create a default perspective camera
   const defaultCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-  defaultCamera.position.set(0, 1.6, 3);
-  defaultCamera.lookAt(0, 1, 0);
   return defaultCamera;
 }
 

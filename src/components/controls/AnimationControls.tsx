@@ -21,6 +21,7 @@ export interface AnimationControlsProps {
   onStop?: () => void;
   onSpeedChange?: (speed: number) => void;
   onLoopToggle?: () => void;
+  layout?: 'bar' | 'panel';
 }
 
 /**
@@ -32,6 +33,7 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
   onStop,
   onSpeedChange,
   onLoopToggle,
+  layout = 'bar',
 }) => {
   // Get playback state from hook
   const { isPlaying, isStopped, speed, loop } = usePlayback();
@@ -109,8 +111,10 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
     }
   };
 
+  const isPanel = layout === 'panel';
+
   return (
-    <div className="flex items-center space-x-4 bg-gray-800 rounded-lg p-3 border border-gray-700">
+    <div className={`${isPanel ? 'space-y-4' : 'flex items-center space-x-4'} bg-gray-800 rounded-lg p-3 border border-gray-700`}>
       {/* Playback Controls */}
       <div className="flex items-center space-x-2">
         <Button
@@ -152,10 +156,10 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
       </div>
       
       {/* Divider */}
-      <div className="w-px h-8 bg-gray-600" />
+      <div className={isPanel ? 'h-px bg-gray-600' : 'w-px h-8 bg-gray-600'} />
       
       {/* Speed Control */}
-      <div className="flex items-center space-x-3">
+      <div className={isPanel ? 'space-y-2' : 'flex items-center space-x-3'}>
         <span className="text-sm text-gray-400 whitespace-nowrap">Speed:</span>
         <div className="flex items-center space-x-2">
           <Button
@@ -187,7 +191,7 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
       </div>
       
       {/* Divider */}
-      <div className="w-px h-8 bg-gray-600" />
+      <div className={isPanel ? 'h-px bg-gray-600' : 'w-px h-8 bg-gray-600'} />
       
       {/* Loop Toggle */}
       <Button
@@ -205,13 +209,14 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
       </Button>
 
       {/* Divider */}
-      <div className="w-px h-8 bg-gray-600" />
+      <div className={isPanel ? 'h-px bg-gray-600' : 'w-px h-8 bg-gray-600'} />
 
       {/* Weight slider — live mixer weight for the current clip */}
-      <div className="flex items-center space-x-2">
+      <div className={isPanel ? 'space-y-1' : 'flex items-center space-x-2'}>
         <label htmlFor={weightId} className="text-sm text-gray-400 whitespace-nowrap">
           Weight
         </label>
+        <div className="flex items-center space-x-2">
         <input
           id={weightId}
           type="range"
@@ -224,16 +229,18 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
           title={`Weight ${weight.toFixed(2)}`}
         />
         <span className="text-xs text-blue-400 font-mono w-10 text-right">{weight.toFixed(2)}</span>
+        </div>
       </div>
 
       {/* Divider */}
-      <div className="w-px h-8 bg-gray-600" />
+      <div className={isPanel ? 'h-px bg-gray-600' : 'w-px h-8 bg-gray-600'} />
 
       {/* Crossfade duration — applied as fadeIn on the next play() call */}
-      <div className="flex items-center space-x-2">
+      <div className={isPanel ? 'space-y-1' : 'flex items-center space-x-2'}>
         <label htmlFor={crossfadeId} className="text-sm text-gray-400 whitespace-nowrap" title="Crossfade duration on next play">
           Fade
         </label>
+        <div className="flex items-center space-x-2">
         <input
           id={crossfadeId}
           type="range"
@@ -246,6 +253,7 @@ export const AnimationControls: React.FC<AnimationControlsProps> = ({
           title={`Crossfade ${crossfadeDuration.toFixed(2)}s`}
         />
         <span className="text-xs text-blue-400 font-mono w-10 text-right">{crossfadeDuration.toFixed(2)}s</span>
+        </div>
       </div>
     </div>
   );

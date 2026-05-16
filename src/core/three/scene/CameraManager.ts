@@ -222,10 +222,43 @@ export class CameraManager {
   }
 
   /**
+   * True when this manager still owns the active canvas/renderer pair.
+   */
+  isAttachedTo(canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer): boolean {
+    return this.controls.domElement === renderer.domElement && renderer.domElement === canvas;
+  }
+
+  /**
    * Focus camera on target
    */
   focusOn(target: THREE.Vector3): void {
     this.controls.target.copy(target);
+    this.controls.update();
+  }
+
+  /**
+   * Position the camera so the given object is visible in the current viewport.
+   */
+  frameObject(object: THREE.Object3D, padding = 1.35): void {
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) {
+      this.resetCamera();
+      return;
+    }
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+    const fov = THREE.MathUtils.degToRad(this.camera.fov);
+    const distance = (radius / Math.sin(fov / 2)) * padding;
+    const direction = new THREE.Vector3(0.8, 0.45, 1).normalize();
+
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).add(direction.multiplyScalar(distance));
+    this.camera.near = Math.max(distance - radius * 4, 0.01);
+    this.camera.far = Math.max(distance + radius * 4, 100);
+    this.camera.lookAt(center);
+    this.camera.updateProjectionMatrix();
     this.controls.update();
   }
 
@@ -338,8 +371,20 @@ export class CameraManager {
 // This should be initialized when the application mounts
 export let cameraManager: CameraManager | null;
 export function initializeCameraManager(canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer): CameraManager {
+  if (cameraManager && !cameraManager.isAttachedTo(canvas, renderer)) {
+    cameraManager.dispose();
+    cameraManager = null;
+  }
+
   if (!cameraManager) {
     cameraManager = new CameraManager(canvas, renderer);
   }
   return cameraManager;
+}
+
+export function disposeCameraManager(): void {
+  if (cameraManager) {
+    cameraManager.dispose();
+    cameraManager = null;
+  }
 }

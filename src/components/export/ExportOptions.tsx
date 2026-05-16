@@ -4,11 +4,20 @@ import { Select, SelectOption } from '../ui/Select';
 
 export interface ExportOptionsData {
   format: 'vrm' | 'vrma' | 'glb' | 'gltf';
+  destination: 'download' | 'game' | 'store' | 'gumroad_unreal';
   name: string;
   description?: string;
   author?: string;
   version?: string;
+  category?: string;
+  keywords?: string;
+  visibility?: 'public_cc0' | 'private_personal' | 'private_commercial' | 'platform_curated';
   includeThumbnail: boolean;
+  generateLods?: boolean;
+  withKtx2?: boolean;
+  withLod3?: boolean;
+  createGumroadDraft?: boolean;
+  autoUploadGumroad?: boolean;
   quality: 'low' | 'medium' | 'high' | 'ultra';
 
   // VRM-specific optimization flags (ignored for non-VRM formats)
@@ -46,6 +55,20 @@ const qualityOptions: SelectOption[] = [
   { value: 'ultra', label: 'Ultra (4K textures)' },
 ];
 
+const destinationOptions: SelectOption[] = [
+  { value: 'game', label: 'Game asset store' },
+  { value: 'store', label: 'Marketplace/store package' },
+  { value: 'gumroad_unreal', label: 'Gumroad + Unreal package' },
+  { value: 'download', label: 'Download file' },
+];
+
+const visibilityOptions: SelectOption[] = [
+  { value: 'platform_curated', label: 'Platform curated' },
+  { value: 'public_cc0', label: 'Public CC0' },
+  { value: 'private_personal', label: 'Private personal' },
+  { value: 'private_commercial', label: 'Private commercial' },
+];
+
 const allowedUserOptions: SelectOption[] = [
   { value: 'OnlyAuthor', label: 'Only Author' },
   { value: 'ExplicitlyLicensedPerson', label: 'Explicitly Licensed Person' },
@@ -68,6 +91,14 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({ options, onChange 
   return (
     <div className="space-y-4">
       <Select
+        label="Destination"
+        options={destinationOptions}
+        value={options.destination}
+        onChange={(e) => handleChange('destination', e.target.value as ExportOptionsData['destination'])}
+        helperText="Send directly into the game asset store, prepare a marketplace package, or export a local file"
+      />
+
+      <Select
         label="Export Format"
         options={formatOptions}
         value={options.format}
@@ -88,6 +119,20 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({ options, onChange 
         value={options.description || ''}
         onChange={(e) => handleChange('description', e.target.value)}
         placeholder="Enter description (optional)"
+      />
+
+      <Input
+        label="Category"
+        value={options.category || ''}
+        onChange={(e) => handleChange('category', e.target.value)}
+        placeholder="building, vegetation, prop..."
+      />
+
+      <Input
+        label="Keywords"
+        value={options.keywords || ''}
+        onChange={(e) => handleChange('keywords', e.target.value)}
+        placeholder="Comma-separated product keywords"
       />
       
       <Input
@@ -111,6 +156,66 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({ options, onChange 
         onChange={(e) => handleChange('quality', e.target.value as ExportOptionsData['quality'])}
         helperText="Higher quality produces larger files"
       />
+
+      <Select
+        label="Visibility / License Mode"
+        options={visibilityOptions}
+        value={options.visibility ?? 'platform_curated'}
+        onChange={(e) => handleChange('visibility', e.target.value as ExportOptionsData['visibility'])}
+      />
+
+      {options.destination !== 'download' && (
+        <fieldset className="border border-gray-700 rounded-lg p-3 space-y-2">
+          <legend className="text-xs text-gray-400 px-1">Store export build</legend>
+          {([
+            ['generateLods', 'Generate LOD pyramid'],
+            ['withKtx2', 'Include KTX2 variants'],
+            ['withLod3', 'Include LOD3/imposter tier'],
+          ] as const).map(([key, label]) => (
+            <div key={key} className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id={`export-${key}`}
+                checked={options[key] !== false}
+                onChange={(e) => handleChange(key, e.target.checked)}
+                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+              />
+              <label htmlFor={`export-${key}`} className="text-sm text-gray-300 cursor-pointer">
+                {label}
+              </label>
+            </div>
+          ))}
+          {options.destination === 'gumroad_unreal' && (
+            <>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="export-create-gumroad-draft"
+                  checked={options.createGumroadDraft === true}
+                  onChange={(e) => handleChange('createGumroadDraft', e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                />
+                <label htmlFor="export-create-gumroad-draft" className="text-sm text-gray-300 cursor-pointer">
+                  Create Gumroad draft
+                </label>
+              </div>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="export-auto-upload-gumroad"
+                  checked={options.autoUploadGumroad === true}
+                  onChange={(e) => handleChange('autoUploadGumroad', e.target.checked)}
+                  disabled={options.createGumroadDraft !== true}
+                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 disabled:opacity-50"
+                />
+                <label htmlFor="export-auto-upload-gumroad" className="text-sm text-gray-300 cursor-pointer">
+                  Attach files with Gumroad browser session
+                </label>
+              </div>
+            </>
+          )}
+        </fieldset>
+      )}
       
       <div className="flex items-center space-x-3">
         <input

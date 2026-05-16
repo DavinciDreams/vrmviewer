@@ -254,7 +254,7 @@ export class ModelService {
    * library listings that only need metadata + thumbnail. Each summary
    * has the `data: ArrayBuffer` field replaced with `undefined`.
    */
-  async listModelSummaries() {
+  async listModelSummaries(_options?: DatabaseQueryOptions) {
     await this.initialize();
     return await this.repository.getAllSummaries();
   }

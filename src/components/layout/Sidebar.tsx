@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { AnimationLibrary } from '../database/AnimationLibrary';
 import { ModelLibrary } from '../database/ModelLibrary';
-import { DatabaseStatsDialog } from '../database/DatabaseStatsDialog';
 
 export interface SidebarProps {
   children?: React.ReactNode;
+  controlsPanel?: React.ReactNode;
   onAnimationPlay?: (id: string) => void;
   onAnimationDelete?: (id: string) => void;
   onAnimationUpdate?: (id: string, name: string, description: string) => void;
@@ -12,9 +12,11 @@ export interface SidebarProps {
   onModelDelete?: (id: string) => Promise<{ success: boolean; error?: { type: string; message: string; } | undefined }>;
   onModelUpdate?: (id: string, name: string, description: string) => void;
   onExport?: () => void;
+  isAssetSurface?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
+  controlsPanel,
   onAnimationPlay,
   onAnimationDelete,
   onAnimationUpdate,
@@ -22,26 +24,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onModelDelete,
   onModelUpdate,
   onExport,
+  isAssetSurface = false,
 }) => {
-  // Export and Stats are action buttons, not tabs — clicking them opens a
-  // dialog without switching the visible content of the sidebar.
-  const [activeTab, setActiveTab] = useState<'animations' | 'models'>('animations');
-  const [isStatsOpen, setIsStatsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'models' | 'animations' | 'controls'>('models');
+
+  if (isAssetSurface) {
+    return (
+      <aside className="flex w-full flex-col bg-gray-900">
+        <ModelLibrary
+          isAssetSurface
+          onLoad={onModelLoad || (() => {})}
+          onDelete={onModelDelete || (async () => ({ success: true }))}
+          onUpdate={onModelUpdate || (() => {})}
+        />
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
       {/* Tabs */}
       <div className="flex border-b border-gray-700">
-        <button
-          onClick={() => setActiveTab('animations')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'animations'
-              ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750'
-              : 'text-gray-400 hover:text-white hover:bg-gray-750'
-          }`}
-        >
-          Animations
-        </button>
         <button
           onClick={() => setActiveTab('models')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
@@ -53,11 +56,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           Models
         </button>
         <button
-          onClick={() => setIsStatsOpen(true)}
-          className="flex-1 px-4 py-3 text-sm font-medium transition-colors text-gray-400 hover:text-white hover:bg-gray-750"
-          title="Library statistics"
+          onClick={() => setActiveTab('animations')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+            activeTab === 'animations'
+              ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750'
+              : 'text-gray-400 hover:text-white hover:bg-gray-750'
+          }`}
         >
-          Stats
+          Animations
+        </button>
+        <button
+          onClick={() => setActiveTab('controls')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+            activeTab === 'controls'
+              ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750'
+              : 'text-gray-400 hover:text-white hover:bg-gray-750'
+          }`}
+        >
+          Controls
         </button>
         <button
           onClick={() => onExport?.()}
@@ -69,6 +85,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
+        {activeTab === 'models' && (
+          <ModelLibrary
+            onLoad={onModelLoad || (() => {})}
+            onDelete={onModelDelete || (async () => ({ success: true }))}
+            onUpdate={onModelUpdate || (() => {})}
+          />
+        )}
+
         {activeTab === 'animations' && (
           <AnimationLibrary
             onPlay={onAnimationPlay || (() => {})}
@@ -77,12 +101,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         )}
 
-        {activeTab === 'models' && (
-          <ModelLibrary
-            onLoad={onModelLoad || (() => {})}
-            onDelete={onModelDelete || (async () => ({ success: true }))}
-            onUpdate={onModelUpdate || (() => {})}
-          />
+        {activeTab === 'controls' && (
+          <div className="p-4 space-y-3">
+            {controlsPanel ?? (
+              <p className="text-sm text-gray-400">Load a model to use viewer controls.</p>
+            )}
+          </div>
         )}
       </div>
       
@@ -93,8 +117,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <p className="mt-1">VRM, GLB, GLTF, FBX, BVH, VRMA</p>
         </div>
       </div>
-
-      <DatabaseStatsDialog isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} />
     </aside>
   );
 };

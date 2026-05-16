@@ -1,4 +1,5 @@
 import React from 'react';
+import { Send, Sparkles } from 'lucide-react';
 import { Button } from '../ui/Button';
 
 export interface ModelControlsProps {
@@ -8,6 +9,11 @@ export interface ModelControlsProps {
   onWireframeToggle: () => void;
   onResetPose: () => void;
   onResetCamera: () => void;
+  onSend: () => void;
+  generatePrompt: string;
+  onGeneratePromptChange: (value: string) => void;
+  onGenerate: () => void;
+  isGenerating?: boolean;
 }
 
 export const ModelControls: React.FC<ModelControlsProps> = ({
@@ -17,9 +23,19 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
   onWireframeToggle,
   onResetPose,
   onResetCamera,
+  onSend,
+  generatePrompt,
+  onGeneratePromptChange,
+  onGenerate,
+  isGenerating = false,
 }) => {
+  const handleGenerateSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onGenerate();
+  };
+
   return (
-    <div className="flex items-center space-x-2 bg-gray-800 rounded-lg p-3 border border-gray-700">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 p-3">
       <Button
         variant={isVisible ? 'primary' : 'ghost'}
         size="sm"
@@ -67,6 +83,39 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       </Button>
+
+      <div className="w-px h-6 bg-gray-600" />
+
+      <Button
+        variant="primary"
+        size="sm"
+        onClick={onSend}
+        title="Send to game or store"
+      >
+        <Send className="w-5 h-5" aria-hidden="true" />
+      </Button>
+
+      <form onSubmit={handleGenerateSubmit} className="ml-auto flex min-w-[18rem] flex-1 items-center gap-2">
+        <input
+          type="text"
+          value={generatePrompt}
+          onChange={(event) => onGeneratePromptChange(event.target.value)}
+          placeholder="Prompt an asset..."
+          aria-label="Asset generation prompt"
+          className="min-w-0 flex-1 rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+        <Button
+          type="submit"
+          variant="primary"
+          size="sm"
+          disabled={!generatePrompt.trim() || isGenerating}
+          loading={isGenerating}
+          title="Generate asset with Hill"
+        >
+          {!isGenerating && <Sparkles className="mr-1.5 h-4 w-4" aria-hidden="true" />}
+          Generate
+        </Button>
+      </form>
     </div>
   );
 };

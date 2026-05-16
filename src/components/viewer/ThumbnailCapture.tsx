@@ -13,7 +13,7 @@ export const ThumbnailCapture: React.FC<ThumbnailCaptureProps> = ({
   disabled = false,
 }) => {
   return (
-    <div className="absolute top-4 right-4 z-10">
+    <div className="absolute top-4 right-[21rem] z-10">
       <Button
         variant="primary"
         size="sm"

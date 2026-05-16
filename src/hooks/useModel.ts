@@ -173,7 +173,22 @@ export function useModel() {
  * Detect format from URL
  */
 function detectFormatFromURL(url: string): ModelFormat {
-  const extension = url.split('.').pop()?.toLowerCase();
+  const parsedUrl = (() => {
+    try {
+      return new URL(url, window.location.href);
+    } catch {
+      return null;
+    }
+  })();
+
+  const formatParam = parsedUrl?.searchParams.get('format')?.toLowerCase();
+  if (formatParam === 'glb' || formatParam === 'gltf' || formatParam === 'vrm' || formatParam === 'fbx') {
+    return formatParam;
+  }
+
+  const nameParam = parsedUrl?.searchParams.get('name');
+  const pathname = parsedUrl?.pathname ?? url.split('?')[0] ?? url;
+  const extension = (nameParam ?? pathname).split('.').pop()?.toLowerCase();
 
   switch (extension) {
     case 'glb':

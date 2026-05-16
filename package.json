@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "server": "node server/asset-library-server.mjs",
+    "start": "node server/asset-library-server.mjs",
     "build": "tsc && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",

@@ -167,12 +167,41 @@ Default API settings:
 | `ASSET_LIBRARY_HOST` | `127.0.0.1` | API bind address |
 | `ASSET_LIBRARY_PORT` | `3100` | API port |
 | `ASSET_LIBRARY_DATA_DIR` | `./data/asset-library` | Model metadata and binary storage |
+| `ASSET_LIBRARY_STATIC_DIR` | unset | Optional built frontend directory to serve from the same Node process |
 | `ASSET_LIBRARY_MAX_BODY_MB` | `512` | Maximum JSON upload body size |
 
 The Vite dev server proxies `/api` to `http://127.0.0.1:3100`, so no client
 configuration is needed for local development. Set `VITE_ASSET_LIBRARY_MODE=local`
 to force browser-only IndexedDB persistence. Set `VITE_ASSET_LIBRARY_API_URL` to
 an explicit API URL when the asset API is hosted separately.
+
+### Docker / Coolify
+
+The included `Dockerfile` builds the Vite frontend and serves it with the
+asset-library API from one container:
+
+```bash
+docker build -t vrmviewer .
+docker run --rm -p 3000:3000 -v vrmviewer-data:/data/asset-library vrmviewer
+```
+
+Coolify settings:
+
+- Exposed port: `3000`
+- Persistent volume: `/data/asset-library`
+- Health check path: `/api/health`
+
+Optional host mounts for the full Hill catalog/control-surface workflow:
+
+- `/tank/asset-library/assets:/tank/asset-library/assets`
+- `/tank/3d:/tank/3d`
+- `/tank/3d-catalog:/tank/3d-catalog`
+- `/home/ms/hill:/home/ms/hill`
+- `/tank/comfy:/tank/comfy`
+
+Without those optional mounts, the app still runs with server-side persistence,
+but Hill generation, file-backed catalog scans, and marketplace packaging will
+only see files stored in `/data/asset-library`.
 
 ## File Naming
 
