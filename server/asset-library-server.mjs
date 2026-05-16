@@ -67,6 +67,8 @@ const LOCAL_IMAGE_CONTENT_TYPES = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
+  ['.glb', 'model/gltf-binary'],
+  ['.gltf', 'model/gltf+json'],
 ]);
 const STATIC_CONTENT_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],
