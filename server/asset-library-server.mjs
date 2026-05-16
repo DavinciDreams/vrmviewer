@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { Readable } from 'node:stream';
 
 const HOST = process.env.ASSET_LIBRARY_HOST ?? '127.0.0.1';
 const PORT = Number(process.env.ASSET_LIBRARY_PORT ?? 3100);
@@ -29,6 +30,7 @@ const HILL_ASSET_LIBRARY_INDEX_DIR = process.env.HILL_ASSET_LIBRARY_INDEX_DIR ??
 const HILL_PROMOTION_QUEUE_CSV = path.join(HILL_ASSET_LIBRARY_INDEX_DIR, 'promotion_queue.csv');
 const HILL_MARKETPLACE_STATUS_JSON = path.join(HILL_ASSET_LIBRARY_INDEX_DIR, 'marketplace_status.json');
 const HILL_CATALOG_ROOT = process.env.HILL_CATALOG_ROOT ?? '/tank/3d-catalog';
+const HILL_PROXY_BASE_URL = (process.env.HILL_PROXY_BASE_URL ?? '').replace(/\/+$/, '');
 const FILE_BACKED_ASSET_ROOTS = (process.env.ASSET_LIBRARY_FILE_ROOTS ?? '/tank/asset-library/assets')
   .split(':')
   .map((root) => path.resolve(root))
@@ -121,6 +123,57 @@ function json(res, statusCode, value) {
 
 function error(res, statusCode, message, details) {
   json(res, statusCode, { success: false, error: { message, details } });
+}
+
+function copyProxyHeaders(req) {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value == null) continue;
+    const lower = key.toLowerCase();
+    if (['connection', 'host', 'content-length', 'transfer-encoding'].includes(lower)) continue;
+    headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+  }
+  return headers;
+}
+
+async function readRawBody(req) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > MAX_BODY_BYTES) {
+      throw new Error(`Request body exceeds ${MAX_BODY_BYTES} bytes`);
+    }
+    chunks.push(chunk);
+  }
+  return chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+}
+
+async function proxyHillRequest(req, res, url) {
+  const target = new URL(`${url.pathname}${url.search}`, HILL_PROXY_BASE_URL);
+  const upstream = await fetch(target, {
+    method: req.method,
+    headers: copyProxyHeaders(req),
+    body: req.method === 'GET' || req.method === 'HEAD' ? undefined : await readRawBody(req),
+    duplex: req.method === 'GET' || req.method === 'HEAD' ? undefined : 'half',
+  });
+
+  const headers = {};
+  upstream.headers.forEach((value, key) => {
+    const lower = key.toLowerCase();
+    if (['connection', 'transfer-encoding', 'content-encoding'].includes(lower)) return;
+    headers[key] = value;
+  });
+  headers['Access-Control-Allow-Origin'] = headers['Access-Control-Allow-Origin'] ?? '*';
+  headers['Access-Control-Allow-Methods'] = headers['Access-Control-Allow-Methods'] ?? 'GET,HEAD,POST,PUT,DELETE,OPTIONS';
+  headers['Access-Control-Allow-Headers'] = headers['Access-Control-Allow-Headers'] ?? 'Content-Type';
+
+  res.writeHead(upstream.status, headers);
+  if (req.method === 'HEAD' || !upstream.body) {
+    res.end();
+    return;
+  }
+  Readable.fromWeb(upstream.body).pipe(res);
 }
 
 async function readJson(filePath) {
@@ -2209,6 +2262,10 @@ async function handle(req, res) {
   const parts = url.pathname.split('/').filter(Boolean);
 
   try {
+    if (HILL_PROXY_BASE_URL && url.pathname.startsWith('/api/hill/')) {
+      return proxyHillRequest(req, res, url);
+    }
+
     if (url.pathname === '/api/health' && req.method === 'GET') {
       await mkdir(MODELS_DIR, { recursive: true });
       return json(res, 200, { success: true, dataDir: DATA_DIR });
