@@ -423,9 +423,24 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     sortBy,
   ]);
 
-  useEffect(() => {
+  // Reset pagination offset whenever the filter combination changes. Using
+  // the React-docs "adjust state during render" pattern (matches the
+  // lastManager pattern in useBlendShapes / SaveModelDialog) to avoid the
+  // react-hooks/set-state-in-effect lint rule.
+  const filterKey = [
+    searchQuery,
+    formatFilter,
+    categoryFilter,
+    assetKindFilter,
+    packFilter,
+    listingFilter,
+    sortBy,
+  ].join('');
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey);
     setModelOffset(0);
-  }, [searchQuery, formatFilter, categoryFilter, assetKindFilter, packFilter, listingFilter, sortBy]);
+  }
 
   const fetchHillStatus = useCallback(async () => {
     try {
