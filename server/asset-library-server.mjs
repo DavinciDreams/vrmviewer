@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -6,6 +5,7 @@ import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } f
 import path from 'node:path';
 import process from 'node:process';
 import { Readable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 
 const HOST = process.env.ASSET_LIBRARY_HOST ?? '127.0.0.1';
 const PORT = Number(process.env.ASSET_LIBRARY_PORT ?? 3100);
@@ -890,7 +890,17 @@ async function listModelRecords() {
   }
   const storedRecords = await listStoredModelRecords();
   const fileBackedRecords = await listFileBackedModelRecords(storedRecords);
-  const records = fileBackedRecords;
+  // Stored records whose `sourcePath` matches a discovered file-backed asset
+  // are already represented in `fileBackedRecords` (overlaid via
+  // overlayBySource, with their uuid preserved). Pure stored records — user
+  // uploads with no sourcePath, or sourcePaths that fall outside
+  // FILE_BACKED_ASSET_ROOTS — won't be in fileBackedRecords at all, so we
+  // merge them in explicitly. Dedup by uuid since overlays preserve it.
+  const fileBackedUuids = new Set(fileBackedRecords.map((record) => record.uuid));
+  const records = [
+    ...storedRecords.filter((record) => !fileBackedUuids.has(record.uuid)),
+    ...fileBackedRecords,
+  ];
   records.sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime());
   modelRecordsCache = {
     expiresAt: now + MODEL_RECORDS_CACHE_TTL_MS,
@@ -2435,6 +2445,7 @@ async function handle(req, res) {
     if (url.pathname === '/api/models:clear' && req.method === 'POST') {
       await rm(MODELS_DIR, { recursive: true, force: true });
       await mkdir(MODELS_DIR, { recursive: true });
+      invalidateModelRecordsCache();
       return json(res, 200, { success: true });
     }
 
@@ -2472,13 +2483,25 @@ async function handle(req, res) {
   }
 }
 
-await mkdir(MODELS_DIR, { recursive: true });
-await resumeQueuedHillJobs();
+export { handle };
 
-const server = createServer(handle);
+// Only start the server when this file is invoked directly (e.g. `npm run
+// server`). Importing as a module exports `handle` without binding to a port
+// — this lets tests `createServer(handle).listen(0)` against a random port
+// with an isolated data dir.
+// pathToFileURL handles relative argv[1] (e.g. when npm forwards `node
+// server/asset-library-server.mjs`) by resolving against cwd first.
+const isMain = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 
-server.listen(PORT, HOST, () => {
-  console.log(`[asset-library] listening on http://${HOST}:${PORT}`);
-  console.log(`[asset-library] data dir: ${DATA_DIR}`);
-  if (STATIC_DIR) console.log(`[asset-library] static dir: ${STATIC_DIR}`);
-});
+if (isMain) {
+  await mkdir(MODELS_DIR, { recursive: true });
+  await resumeQueuedHillJobs();
+
+  const server = createServer(handle);
+
+  server.listen(PORT, HOST, () => {
+    console.log(`[asset-library] listening on http://${HOST}:${PORT}`);
+    console.log(`[asset-library] data dir: ${DATA_DIR}`);
+    if (STATIC_DIR) console.log(`[asset-library] static dir: ${STATIC_DIR}`);
+  });
+}
