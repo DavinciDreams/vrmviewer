@@ -18,9 +18,19 @@ const mgrMock = vi.hoisted(() => {
     ambientLight,
     directionalLight,
     rimLight: null as { intensity: number } | null,
+    previewMode: 'standard' as 'standard' | 'studio',
+    whiteBackgroundEnabled: false,
     getAmbientLight: vi.fn(() => ambientLight),
     getDirectionalLight: vi.fn(() => directionalLight),
     getRimLight: vi.fn(() => mgrMock.rimLight),
+    getPreviewMode: vi.fn(() => mgrMock.previewMode),
+    setPreviewMode: vi.fn((mode: 'standard' | 'studio') => {
+      mgrMock.previewMode = mode;
+    }),
+    getWhiteBackgroundEnabled: vi.fn(() => mgrMock.whiteBackgroundEnabled),
+    setWhiteBackgroundEnabled: vi.fn((enabled: boolean) => {
+      mgrMock.whiteBackgroundEnabled = enabled;
+    }),
     setAmbientIntensity: vi.fn((v: number) => {
       ambientLight.intensity = v;
     }),
@@ -46,9 +56,15 @@ beforeEach(() => {
   mgrMock.ambientLight.intensity = 0.6;
   mgrMock.directionalLight.intensity = 0.8;
   mgrMock.rimLight = null;
+  mgrMock.previewMode = 'standard';
+  mgrMock.whiteBackgroundEnabled = false;
   mgrMock.getAmbientLight.mockClear();
   mgrMock.getDirectionalLight.mockClear();
   mgrMock.getRimLight.mockClear();
+  mgrMock.getPreviewMode.mockClear();
+  mgrMock.setPreviewMode.mockClear();
+  mgrMock.getWhiteBackgroundEnabled.mockClear();
+  mgrMock.setWhiteBackgroundEnabled.mockClear();
   mgrMock.setAmbientIntensity.mockClear();
   mgrMock.setDirectionalIntensity.mockClear();
   mgrMock.addRimLight.mockClear();
@@ -82,27 +98,27 @@ describe('LightingPanel', () => {
 
   it('rim-light checkbox starts unchecked when manager has no rim light', () => {
     render(<LightingPanel />);
-    const checkbox = screen.getByRole('checkbox');
+    const checkbox = screen.getAllByRole('checkbox')[2];
     expect(checkbox).not.toBeChecked();
   });
 
   it('rim-light checkbox starts checked when manager already has a rim light', () => {
     mgrMock.rimLight = { intensity: 0.7 };
     render(<LightingPanel />);
-    const checkbox = screen.getByRole('checkbox');
+    const checkbox = screen.getAllByRole('checkbox')[2];
     expect(checkbox).toBeChecked();
   });
 
   it('enabling rim light calls addRimLight with the current intensity', () => {
     render(<LightingPanel />);
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getAllByRole('checkbox')[2]);
     expect(mgrMock.addRimLight).toHaveBeenCalledWith(0xffffff, 0.5);
   });
 
   it('disabling rim light calls removeRimLight', () => {
     mgrMock.rimLight = { intensity: 0.5 };
     render(<LightingPanel />);
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getAllByRole('checkbox')[2]);
     expect(mgrMock.removeRimLight).toHaveBeenCalled();
   });
 
@@ -138,6 +154,8 @@ describe('LightingPanel', () => {
     for (const slider of screen.getAllByRole('slider')) {
       expect(slider).toBeDisabled();
     }
-    expect(screen.getByRole('checkbox')).toBeDisabled();
+    for (const checkbox of screen.getAllByRole('checkbox')) {
+      expect(checkbox).toBeDisabled();
+    }
   });
 });
