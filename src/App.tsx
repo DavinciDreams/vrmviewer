@@ -522,6 +522,7 @@ function App() {
   const handleFileLoad = useCallback(async (file: File) => {
     const extension = getFileExtension(file.name);
     const fileType = getFileTypeFromExtension(extension);
+    const normalizedExtension = extension.replace(/^\./, '');
 
     if (fileType === 'model') {
       // Clear current model and unsaved state before loading new model
@@ -536,6 +537,22 @@ function App() {
       // Load model
       const model = await loadModelFromFile(file);
       if (model) {
+        const hasRenderableMesh = (() => {
+          let foundMesh = false;
+          model.scene?.traverse((object) => {
+            if (object instanceof THREE.Mesh) foundMesh = true;
+          });
+          return foundMesh;
+        })();
+
+        if (normalizedExtension === 'fbx' && !hasRenderableMesh && model.animations?.length) {
+          setPendingAnimationFile(file);
+          setPendingAnimationClip(model.animations[0]);
+          setIsAnimationEditorOpen(true);
+          clearCurrentModel();
+          return;
+        }
+
         // Store unsaved model data
         const fileData = await file.arrayBuffer();
         setUnsavedModelFile(file);
@@ -543,14 +560,14 @@ function App() {
       }
     } else if (fileType === 'animation') {
       // Load animation
-      if (extension === 'bvh') {
+      if (normalizedExtension === 'bvh') {
         const result = await bvhLoader.loadFromFile(file);
           if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
             setPendingAnimationFile(file);
             setPendingAnimationClip(result.data.animation);
             setIsAnimationEditorOpen(true);
           }
-      } else if (extension === 'vrma') {
+      } else if (normalizedExtension === 'vrma') {
         const result = await vrmaLoader.loadFromFile(file);
           if (hasSuccessAndData<{ animation: import('three').AnimationClip }>(result)) {
             setPendingAnimationFile(file);

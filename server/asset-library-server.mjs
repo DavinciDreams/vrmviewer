@@ -14,6 +14,9 @@ const STATIC_DIR = process.env.ASSET_LIBRARY_STATIC_DIR
   ? path.resolve(process.env.ASSET_LIBRARY_STATIC_DIR)
   : null;
 const MAX_BODY_BYTES = Number(process.env.ASSET_LIBRARY_MAX_BODY_MB ?? 512) * 1024 * 1024;
+const HILL_INTEGRATION_ENABLED = ['1', 'true', 'yes'].includes(
+  String(process.env.ASSET_LIBRARY_ENABLE_HILL ?? '').toLowerCase(),
+);
 
 const MODELS_DIR = path.join(DATA_DIR, 'models');
 const DELETED_ASSETS_DIR = path.join(DATA_DIR, 'deleted-assets');
@@ -25,32 +28,37 @@ const HILL_CONJURE_SCRIPT = process.env.HILL_CONJURE_SCRIPT ?? path.join(HILL_RO
 const HILL_ENRICH_EXPORT_SCRIPT = process.env.HILL_ENRICH_EXPORT_SCRIPT ?? path.join(HILL_ROOT, 'scripts/enrich_export_job.py');
 const HILL_MARKETPLACE_PACKAGE_SCRIPT = process.env.HILL_MARKETPLACE_PACKAGE_SCRIPT ?? path.join(HILL_ROOT, 'scripts/package_vrmviewer_asset.py');
 const HILL_PROMOTE_ASSET_SCRIPT = process.env.HILL_PROMOTE_ASSET_SCRIPT ?? path.join(HILL_ROOT, 'scripts/promote_asset_queue.py');
-const HILL_LOD_SCRIPT = process.env.HILL_LOD_SCRIPT ?? '/tank/comfy/trellis2-bake/optimize_glb_lod.sh';
-const HILL_ASSET_LIBRARY_INDEX_DIR = process.env.HILL_ASSET_LIBRARY_INDEX_DIR ?? '/tank/asset-library/index';
+const HILL_LOD_SCRIPT = process.env.HILL_LOD_SCRIPT ?? '/tank/3d/tools/trellis2-bake/optimize_glb_lod.sh';
+const HILL_ASSET_LIBRARY_INDEX_DIR = process.env.HILL_ASSET_LIBRARY_INDEX_DIR ?? '/tank/3d/catalog/index';
 const HILL_PROMOTION_QUEUE_CSV = path.join(HILL_ASSET_LIBRARY_INDEX_DIR, 'promotion_queue.csv');
 const HILL_MARKETPLACE_STATUS_JSON = path.join(HILL_ASSET_LIBRARY_INDEX_DIR, 'marketplace_status.json');
-const HILL_CATALOG_ROOT = process.env.HILL_CATALOG_ROOT ?? '/tank/3d-catalog';
 const HILL_PROXY_BASE_URL = (process.env.HILL_PROXY_BASE_URL ?? '').replace(/\/+$/, '');
-const FILE_BACKED_ASSET_ROOTS = (process.env.ASSET_LIBRARY_FILE_ROOTS ?? '/tank/asset-library/assets')
+const HILL_CATALOG_ROOT = process.env.HILL_CATALOG_ROOT ?? '/tank/3d/catalog';
+const DEFAULT_FILE_BACKED_ASSET_ROOT = path.join(DATA_DIR, 'assets');
+const FILE_BACKED_ASSET_ROOTS = (process.env.ASSET_LIBRARY_FILE_ROOTS ?? DEFAULT_FILE_BACKED_ASSET_ROOT)
   .split(':')
   .map((root) => path.resolve(root))
   .filter(Boolean);
-const SAFE_HILL_FILE_ROOTS = [
-  '/tank/asset-library/assets',
-  '/tank/3d/conjured_assets',
-  '/tank/3d/game_asset_store',
-  '/tank/3d/marketplace_store',
-  '/tank/3d-catalog/assetforge-props',
-  '/tank/3d-catalog/preview-glbs',
-  '/tank/comfy/workspace/output',
+const HILL_FILE_ROOTS = [
+  ...FILE_BACKED_ASSET_ROOTS,
+  ...(HILL_INTEGRATION_ENABLED
+    ? [
+        '/tank/3d/assets',
+        '/tank/3d/catalog/assetforge-props',
+        '/tank/3d/catalog/preview-glbs',
+        '/tank/comfy/workspace/output',
+      ]
+    : []),
 ].map((root) => path.resolve(root));
 const DELETABLE_ASSET_ROOTS = [
-  '/tank/asset-library/assets',
-  '/tank/3d/conjured_assets',
-  '/tank/3d/game_asset_store',
-  '/tank/3d/marketplace_store',
-  '/tank/3d-catalog/assetforge-props',
-  '/tank/3d-catalog/preview-glbs',
+  ...FILE_BACKED_ASSET_ROOTS,
+  ...(HILL_INTEGRATION_ENABLED
+    ? [
+        '/tank/3d/assets',
+        '/tank/3d/catalog/assetforge-props',
+        '/tank/3d/catalog/preview-glbs',
+      ]
+    : []),
 ].map((root) => path.resolve(root));
 const ALLOWED_FORMATS = new Set(['vrm', 'gltf', 'glb', 'fbx']);
 const FILE_BACKED_FORMATS = new Set(['.vrm', '.gltf', '.glb', '.fbx']);
@@ -1202,7 +1210,7 @@ function generatedAssetRootForPath(filePath) {
   const resolved = resolvePathInsideRoots(filePath, DELETABLE_ASSET_ROOTS);
   if (!resolved) return null;
 
-  const generatedRoot = path.resolve('/tank/asset-library/assets/generated');
+  const generatedRoot = path.resolve('/tank/3d/assets/generated');
   if (!isPathWithin(resolved, generatedRoot)) return null;
 
   const relative = path.relative(generatedRoot, resolved).split(path.sep).filter(Boolean);
@@ -1215,7 +1223,7 @@ function catalogPackRootForRecord(record) {
   const sourceCatalog = record?.metadata?.sourceCatalog;
   const catalogPath = resolvePathInsideRoots(sourceCatalog, DELETABLE_ASSET_ROOTS);
   if (!catalogPath) return null;
-  const assetForgeRoot = path.resolve('/tank/3d-catalog/assetforge-props');
+  const assetForgeRoot = path.resolve('/tank/3d/catalog/assetforge-props');
   if (!isPathWithin(catalogPath, assetForgeRoot)) return null;
   const relative = path.relative(assetForgeRoot, catalogPath).split(path.sep).filter(Boolean);
   if (!relative[0]) return null;
@@ -1371,7 +1379,7 @@ async function sendModelThumbnail(res, uuid, { head = false } = {}) {
 function resolveSafeHillFile(filePath) {
   if (!filePath || typeof filePath !== 'string') return null;
   const resolved = path.resolve(filePath);
-  const isAllowed = SAFE_HILL_FILE_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
+  const isAllowed = HILL_FILE_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
   return isAllowed ? resolved : null;
 }
 
@@ -1414,7 +1422,7 @@ async function createHillRegenJob(body) {
   const id = randomUUID();
   const packSlug = record.packSlug ?? record.assetGroupId?.split(':')[0] ?? null;
   const manifestPath = packSlug
-    ? `/tank/3d-catalog/assetforge-props/${packSlug}/unified_manifest.json`
+    ? `/tank/3d/catalog/assetforge-props/${packSlug}/unified_manifest.json`
     : null;
 
   const job = {
@@ -2271,6 +2279,10 @@ async function handle(req, res) {
       return json(res, 200, { success: true, dataDir: DATA_DIR });
     }
 
+    if (url.pathname.startsWith('/api/hill/') && !HILL_INTEGRATION_ENABLED) {
+      return error(res, 404, 'Hill integration is disabled for this asset library');
+    }
+
     if (url.pathname === '/api/hill/file' && (req.method === 'GET' || req.method === 'HEAD')) {
       return sendLocalHillFile(res, url.searchParams.get('path'), { head: req.method === 'HEAD' });
     }
@@ -2291,7 +2303,7 @@ async function handle(req, res) {
         data: {
           dataDir: DATA_DIR,
           jobsDir: HILL_REGEN_JOBS_DIR,
-          catalogRoot: '/tank/3d-catalog/assetforge-props',
+          catalogRoot: '/tank/3d/catalog/assetforge-props',
           modelCount: records.length,
           packCount: packs.length,
           packs,
@@ -2473,12 +2485,15 @@ async function handle(req, res) {
 }
 
 await mkdir(MODELS_DIR, { recursive: true });
-await resumeQueuedHillJobs();
+if (HILL_INTEGRATION_ENABLED) {
+  await resumeQueuedHillJobs();
+}
 
 const server = createServer(handle);
 
 server.listen(PORT, HOST, () => {
   console.log(`[asset-library] listening on http://${HOST}:${PORT}`);
   console.log(`[asset-library] data dir: ${DATA_DIR}`);
+  console.log(`[asset-library] hill integration: ${HILL_INTEGRATION_ENABLED ? 'enabled' : 'disabled'}`);
   if (STATIC_DIR) console.log(`[asset-library] static dir: ${STATIC_DIR}`);
 });

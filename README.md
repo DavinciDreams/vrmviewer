@@ -193,9 +193,7 @@ Coolify settings:
 
 Optional host mounts for the full Hill catalog/control-surface workflow:
 
-- `/tank/asset-library/assets:/tank/asset-library/assets`
 - `/tank/3d:/tank/3d`
-- `/tank/3d-catalog:/tank/3d-catalog`
 - `/home/ms/hill:/home/ms/hill`
 - `/tank/comfy:/tank/comfy`
 

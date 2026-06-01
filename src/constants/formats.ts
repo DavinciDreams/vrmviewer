@@ -113,6 +113,7 @@ export const MODEL_FILE_EXTENSIONS: string[] = [
 export const ANIMATION_FILE_EXTENSIONS: string[] = [
   ...ANIMATION_EXTENSIONS.bvh,
   ...ANIMATION_EXTENSIONS.vrma,
+  ...ANIMATION_EXTENSIONS.fbx,
 ];
 
 /**

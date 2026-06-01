@@ -1,6 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { configureDracoLoader } from '../../core/three/loaders/configureDracoLoader';
 
 interface MarketplacePlatformStatus {
   platform?: string;
@@ -21,8 +26,10 @@ export interface ModelData {
   name: string;
   description?: string;
   thumbnail?: string;
+  previewImages?: string[];
   createdAt: string;
   updatedAt?: string;
+  format?: string;
   assetKind?: 'model' | 'texture';
   assetGroupId?: string;
   lodTier?: string;
@@ -40,11 +47,176 @@ export interface ModelData {
   listingStatus?: 'live' | 'draft' | 'failed' | 'unlisted';
 }
 
+interface InlineModelPreviewProps {
+  model: ModelData;
+}
+
+const previewableModelFormats = new Set(['glb', 'gltf', 'vrm', 'fbx']);
+
+const modelFileUrl = (model: ModelData) => {
+  const params = new URLSearchParams();
+  if (model.format) params.set('format', model.format);
+  params.set('name', model.name);
+  return `/api/models/${encodeURIComponent(model.id)}/file?${params.toString()}`;
+};
+
+const disposeObject = (object: THREE.Object3D) => {
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry?.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.filter(Boolean).forEach((material) => material.dispose());
+  });
+};
+
+const InlineModelPreview: React.FC<InlineModelPreviewProps> = ({ model }) => {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState('Loading preview...');
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return undefined;
+
+    let cancelled = false;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf3f2ec);
+
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 1000);
+    camera.position.set(0, 1.2, 3);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance',
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.25;
+    mount.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.2;
+    controls.target.set(0, 0.7, 0);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x9ca3af, 1.8));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.8);
+    keyLight.position.set(3, 4, 5);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 1.4);
+    fillLight.position.set(-4, 2, -3);
+    scene.add(fillLight);
+
+    const resize = () => {
+      const width = Math.max(1, mount.clientWidth);
+      const height = Math.max(1, mount.clientHeight);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
+
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(mount);
+    resize();
+
+    let previewRoot: THREE.Object3D | null = null;
+    const fitPreviewRoot = (object: THREE.Object3D) => {
+      previewRoot = object;
+      scene.add(previewRoot);
+
+      const bounds = new THREE.Box3().setFromObject(previewRoot);
+      const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+      const scale = 1.8 / maxDim;
+      previewRoot.scale.setScalar(scale);
+      previewRoot.position.sub(center.multiplyScalar(scale));
+      previewRoot.position.y += Math.max(size.y * scale * 0.45, 0.4);
+
+      controls.target.set(0, Math.max(size.y * scale * 0.45, 0.4), 0);
+      camera.position.set(0, controls.target.y + 0.35, Math.max(2.2, maxDim * scale * 1.6));
+      controls.update();
+      setStatus('');
+    };
+    const onPreviewError = (error: unknown) => {
+      console.warn(`Preview load failed for ${model.name}:`, error);
+      if (!cancelled) setStatus('Preview failed');
+    };
+
+    if ((model.format ?? '').toLowerCase() === 'fbx') {
+      const loader = new FBXLoader();
+      loader.load(
+        modelFileUrl(model),
+        (object) => {
+          if (cancelled) {
+            disposeObject(object);
+            return;
+          }
+          fitPreviewRoot(object);
+        },
+        undefined,
+        onPreviewError,
+      );
+    } else {
+      const loader = configureDracoLoader(new GLTFLoader());
+      loader.load(
+        modelFileUrl(model),
+        (gltf) => {
+        if (cancelled) {
+          disposeObject(gltf.scene);
+          return;
+        }
+          fitPreviewRoot(gltf.scene);
+        },
+        undefined,
+        onPreviewError,
+      );
+    }
+
+    let frameId = 0;
+    const tick = () => {
+      controls.update();
+      renderer.render(scene, camera);
+      frameId = window.requestAnimationFrame(tick);
+    };
+    tick();
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+      controls.dispose();
+      if (previewRoot) disposeObject(previewRoot);
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, [model]);
+
+  return (
+    <div
+      ref={mountRef}
+      className="relative h-full w-full"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      role="presentation"
+    >
+      {status && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950/70 text-xs text-gray-200">
+          {status}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export interface ModelCardProps {
   model: ModelData;
   onLoad: (id: string) => void;
   onDelete: (id: string) => Promise<{ success: boolean; error?: string }>;
   onEdit: (id: string) => void;
+  onKeep?: (id: string) => Promise<void>;
   onRegenerate?: (id: string) => Promise<void>;
   onEnrich?: (id: string) => Promise<void>;
 }
@@ -54,16 +226,25 @@ export const ModelCard: React.FC<ModelCardProps> = ({
   onLoad,
   onDelete,
   onEdit,
+  onKeep,
   onRegenerate,
   onEnrich,
 }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isKeeping, setIsKeeping] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isInlinePreviewOpen, setIsInlinePreviewOpen] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
+  const previewImages = (model.previewImages?.length ? model.previewImages : [model.thumbnail]).filter(
+    (image): image is string => Boolean(image),
+  );
+  const currentImage = previewImages[imageIndex % Math.max(previewImages.length, 1)];
+  const canInlinePreview = model.assetKind !== 'texture' && previewableModelFormats.has((model.format ?? '').toLowerCase());
   const qualityLabel = model.qualityTier?.replace(/_/g, ' ');
   const reviewLabel = model.reviewStatus?.replace(/_/g, ' ');
   const completedExports = [
@@ -92,6 +273,7 @@ export const ModelCard: React.FC<ModelCardProps> = ({
       : 'border-gray-500/40 bg-gray-900/60 text-gray-200';
 
   const handleCardOpen = () => {
+    if (isInlinePreviewOpen) return;
     onLoad(model.id);
   };
 
@@ -102,6 +284,16 @@ export const ModelCard: React.FC<ModelCardProps> = ({
   const handleDeleteClick = () => {
     setIsDeleteDialogOpen(true);
     setDeleteError(null);
+  };
+
+  const handleKeepClick = async () => {
+    if (!onKeep || isKeeping) return;
+    setIsKeeping(true);
+    try {
+      await onKeep(model.id);
+    } finally {
+      setIsKeeping(false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -141,6 +333,14 @@ export const ModelCard: React.FC<ModelCardProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (previewImages.length <= 1 || isInlinePreviewOpen) return undefined;
+    const timer = window.setInterval(() => {
+      setImageIndex((index) => (index + 1) % previewImages.length);
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, [isInlinePreviewOpen, previewImages.length]);
+
   return (
     <div
       className="group relative overflow-hidden rounded-md border border-gray-700 bg-gray-800 transition-colors hover:border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -156,28 +356,54 @@ export const ModelCard: React.FC<ModelCardProps> = ({
       aria-label={`Open ${model.name} in viewer`}
       title={`Open ${model.name} in viewer`}
     >
-      <button
-        type="button"
-        onClick={(event) => {
-          stopCardOpen(event);
-          handleDeleteClick();
-        }}
-        disabled={isDeleting}
-        aria-label={`Delete ${model.name}`}
-        title="Delete"
-        className="absolute right-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-500/50 bg-red-950/85 text-red-200 shadow hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {isDeleting ? (
-          <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-        ) : (
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-          </svg>
+      <div className="absolute right-2 top-2 z-30 flex gap-2">
+        {onKeep && (
+          <button
+            type="button"
+            onClick={(event) => {
+              stopCardOpen(event);
+              void handleKeepClick();
+            }}
+            disabled={isKeeping}
+            aria-label={`Keep ${model.name}`}
+            title="Keep"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-400/60 bg-emerald-700/90 text-white shadow hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isKeeping ? (
+              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </button>
         )}
-      </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            stopCardOpen(event);
+            handleDeleteClick();
+          }}
+          disabled={isDeleting}
+          aria-label={`Discard ${model.name}`}
+          title="Discard"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-400/60 bg-red-800/90 text-white shadow hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isDeleting ? (
+            <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          )}
+        </button>
+      </div>
 
       <div className="relative flex aspect-square w-full items-center justify-center bg-gray-900 text-left">
         {model.assetKind === 'texture' && (
@@ -185,15 +411,36 @@ export const ModelCard: React.FC<ModelCardProps> = ({
             Texture
           </span>
         )}
-        <span className="absolute right-2 top-11 z-10 rounded border border-blue-400/40 bg-blue-950/85 px-2 py-0.5 text-[11px] font-medium uppercase text-blue-100 opacity-90 transition-opacity group-hover:opacity-100">
-          View
-        </span>
-        {model.thumbnail ? (
-          <img src={model.thumbnail} alt={model.name} className="h-full w-full object-cover" />
+        {canInlinePreview && (
+          <button
+            type="button"
+            onClick={(event) => {
+              stopCardOpen(event);
+              setIsInlinePreviewOpen((value) => !value);
+            }}
+            className="absolute right-2 top-11 z-20 rounded border border-blue-400/40 bg-blue-950/85 px-2 py-0.5 text-[11px] font-medium uppercase text-blue-100 opacity-95 hover:bg-blue-800"
+          >
+            {isInlinePreviewOpen ? 'Image' : 'Load Preview'}
+          </button>
+        )}
+        {isInlinePreviewOpen && canInlinePreview ? (
+          <InlineModelPreview model={model} />
+        ) : currentImage ? (
+          <img src={currentImage} alt={model.name} className="h-full w-full object-cover" />
         ) : (
           <svg className="h-14 w-14 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
           </svg>
+        )}
+        {previewImages.length > 1 && !isInlinePreviewOpen && (
+          <div className="absolute bottom-20 left-3 z-10 flex gap-1">
+            {previewImages.slice(0, 6).map((image, index) => (
+              <span
+                key={`${image}-${index}`}
+                className={`h-1.5 w-1.5 rounded-full ${index === imageIndex % previewImages.length ? 'bg-white' : 'bg-white/40'}`}
+              />
+            ))}
+          </div>
         )}
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-gray-950 via-gray-950/85 to-transparent p-3">
           <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-white" title={model.name}>
@@ -344,12 +591,12 @@ export const ModelCard: React.FC<ModelCardProps> = ({
       <Dialog
         isOpen={isDeleteDialogOpen}
         onClose={() => setIsDeleteDialogOpen(false)}
-        title="Delete Model"
+        title="Discard Asset"
         size="sm"
       >
         <div className="space-y-4">
           <p className="text-gray-300">
-            Are you sure you want to delete <span className="font-semibold text-white">{model.name}</span>?
+            Discard <span className="font-semibold text-white">{model.name}</span> from the review library?
           </p>
           <p className="text-sm text-gray-400">This action cannot be undone.</p>
 
@@ -364,7 +611,7 @@ export const ModelCard: React.FC<ModelCardProps> = ({
               Cancel
             </Button>
             <Button variant="danger" onClick={handleDeleteConfirm} disabled={isDeleting}>
-              {isDeleting ? 'Deleting...' : 'Delete'}
+              {isDeleting ? 'Discarding...' : 'Discard'}
             </Button>
           </div>
         </div>

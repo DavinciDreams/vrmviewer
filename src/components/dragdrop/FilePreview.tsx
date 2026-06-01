@@ -8,11 +8,12 @@ export interface FilePreviewProps {
 
 export const FilePreview: React.FC<FilePreviewProps> = ({ file, onRemove, onLoad }) => {
   const getFileType = (filename: string): 'model' | 'animation' | 'unknown' => {
-    const ext = filename.toLowerCase();
-    if (['.vrm', '.glb', '.gltf', '.fbx'].includes(ext)) {
+    const ext = filename.toLowerCase().split('.').pop();
+    const extension = ext ? `.${ext}` : '';
+    if (['.vrm', '.glb', '.gltf', '.fbx'].includes(extension)) {
       return 'model';
     }
-    if (['.bvh', '.vrma', '.fbx'].includes(ext)) {
+    if (['.bvh', '.vrma'].includes(extension)) {
       return 'animation';
     }
     return 'unknown';

@@ -6,11 +6,14 @@ import { AnimationEditor } from './AnimationEditor';
 import { useDatabase } from '../../hooks/useDatabase';
 import { getThumbnailService } from '../../core/database/services/ThumbnailService';
 
+const HILL_CONTROLS_ENABLED = import.meta.env.VITE_ENABLE_HILL_CONTROLS === 'true';
+
 export interface ModelData {
   id: string;
   name: string;
   description?: string;
   thumbnail?: string;
+  previewImages?: string[];
   createdAt: string;
   updatedAt?: string;
   format?: string;
@@ -131,6 +134,29 @@ const metadataThumbnailForRecord = (record: {
   const coverThumbnail = firstLocalHillImage(...coverCandidatesForRecord(record));
   if (isPackPreview) return coverThumbnail ?? propThumbnail ?? record.thumbnail;
   return propThumbnail ?? coverThumbnail ?? record.thumbnail;
+};
+
+const metadataPreviewImagesForRecord = (record: {
+  thumbnail?: string;
+  sourcePath?: string;
+  assetGroupId?: string;
+  packSlug?: string;
+  metadata?: unknown;
+}) => {
+  const metadata = record.metadata as HillModelMetadata | undefined;
+  const propName = metadata?.prop?.name;
+  const perProp = propName
+    ? metadata?.heroMedia?.perProp?.[propName]?.primary ?? metadata?.hero_media?.per_prop?.[propName]?.primary
+    : undefined;
+  return Array.from(new Set([
+    firstLocalHillImage(perProp),
+    firstLocalHillImage(metadata?.prop?.ref_image),
+    firstLocalHillImage(metadata?.prop?.referenceImage),
+    firstLocalHillImage(metadata?.refImage),
+    firstLocalHillImage(metadata?.referenceImage),
+    ...coverCandidatesForRecord(record).map((candidate) => firstLocalHillImage(candidate)),
+    record.thumbnail,
+  ].filter((image): image is string => Boolean(image))));
 };
 
 const formatBytes = (bytes: number) => {
@@ -325,6 +351,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   // Thumbnail service
   const thumbnailService = getThumbnailService();
 
+  const resetPaging = () => {
+    setModelOffset(0);
+  };
+
   // Fetch models from database. Resolves setState in async continuations
   // (legitimate data-fetching pattern; the new react-hooks/set-state-in-effect
   // rule still flags it because the call originates inside an effect).
@@ -363,6 +393,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             name: record.name,
             description: record.description || metadata?.description || metadata?.prompt,
             thumbnail: metadataThumbnailForRecord(record),
+            previewImages: metadataPreviewImagesForRecord(record),
             createdAt: toIsoString(record.createdAt) ?? new Date().toISOString(),
             updatedAt: toIsoString(record.updatedAt),
             format: record.format,
@@ -423,11 +454,11 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     sortBy,
   ]);
 
-  useEffect(() => {
-    setModelOffset(0);
-  }, [searchQuery, formatFilter, categoryFilter, assetKindFilter, packFilter, listingFilter, sortBy]);
-
   const fetchHillStatus = useCallback(async () => {
+    if (!HILL_CONTROLS_ENABLED) {
+      setHillStatus(null);
+      return;
+    }
     try {
       const response = await fetch('/api/hill/status');
       if (!response.ok) throw new Error(`Hill status failed: ${response.status}`);
@@ -442,6 +473,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   }, []);
 
   const fetchConjureJobs = useCallback(async () => {
+    if (!HILL_CONTROLS_ENABLED) {
+      setConjureJobs([]);
+      return;
+    }
     try {
       const response = await fetch('/api/hill/conjure-jobs');
       if (!response.ok) throw new Error(`Hill conjure jobs failed: ${response.status}`);
@@ -455,6 +490,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   }, []);
 
   const fetchRegenJobs = useCallback(async () => {
+    if (!HILL_CONTROLS_ENABLED) {
+      setRegenJobs([]);
+      return;
+    }
     try {
       const response = await fetch('/api/hill/regen-jobs');
       if (!response.ok) throw new Error(`Hill regen jobs failed: ${response.status}`);
@@ -468,6 +507,11 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   }, []);
 
   const fetchPromotionQueue = useCallback(async () => {
+    if (!HILL_CONTROLS_ENABLED) {
+      setPromotionQueue([]);
+      setIsPromotionQueueLoading(false);
+      return;
+    }
     try {
       setIsPromotionQueueLoading(true);
       const response = await fetch('/api/hill/promotion-queue');
@@ -833,6 +877,26 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     }
   };
 
+  const handleKeep = async (id: string) => {
+    const model = modelList.find((item) => item.id === id);
+    const updateResult = await models.update(id, {
+      reviewStatus: 'approved',
+      qualityTier: model?.qualityTier ?? 'game_ready',
+    });
+    if (!updateResult.success) {
+      const errorMessage = typeof updateResult.error === 'string'
+        ? updateResult.error
+        : updateResult.error?.message || 'Failed to keep asset';
+      setDeleteMessage({ type: 'error', text: errorMessage });
+      setTimeout(() => setDeleteMessage(null), 5000);
+      throw new Error(errorMessage);
+    }
+
+    setDeleteMessage({ type: 'success', text: `Kept ${model?.name ?? 'asset'}` });
+    await fetchModels();
+    setTimeout(() => setDeleteMessage(null), 3000);
+  };
+
   const handleConjureSubmit = async () => {
     const prompt = conjurePrompt.trim();
     if (!prompt || isConjuring) return;
@@ -984,7 +1048,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             </div>
           </div>
         )}
-        {hillStatus && (
+        {HILL_CONTROLS_ENABLED && hillStatus && (
           <div className="rounded border border-emerald-500/30 bg-emerald-950/30 px-3 py-2">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="font-medium text-emerald-200">Hill pipeline</span>
@@ -1100,6 +1164,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             )}
           </div>
         )}
+        {HILL_CONTROLS_ENABLED && (
         <div className="grid grid-cols-2 gap-2 rounded border border-gray-700 bg-gray-900 p-1">
           <button
             type="button"
@@ -1124,11 +1189,15 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             Review Queue ({promotionQueue.length})
           </button>
         </div>
+        )}
         <div className={isAssetSurface ? 'space-y-3' : ''}>
           <Input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={assetView === 'review' ? 'Search review queue...' : 'Search assets...'}
+            onChange={(e) => {
+              resetPaging();
+              setSearchQuery(e.target.value);
+            }}
+            placeholder={HILL_CONTROLS_ENABLED && assetView === 'review' ? 'Search review queue...' : 'Search assets...'}
           />
         {(availableFormats.length > 0 || availableCategories.length > 0 || availablePacks.length > 0) && (
           <div className="grid grid-cols-2 gap-2">
@@ -1141,7 +1210,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setAssetKindFilter(value)}
+                  onClick={() => {
+                    resetPaging();
+                    setAssetKindFilter(value);
+                  }}
                   className={`rounded px-2 py-1.5 text-xs font-medium transition-colors ${
                     assetKindFilter === value
                       ? 'bg-blue-600 text-white'
@@ -1155,7 +1227,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             {availablePacks.length > 0 && (
               <select
                 value={packFilter}
-                onChange={(e) => setPackFilter(e.target.value)}
+                onChange={(e) => {
+                  resetPaging();
+                  setPackFilter(e.target.value);
+                }}
                 aria-label="Filter by pack"
                 className="col-span-2 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -1168,7 +1243,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             {availableFormats.length > 0 && (
               <select
                 value={formatFilter}
-                onChange={(e) => setFormatFilter(e.target.value)}
+                onChange={(e) => {
+                  resetPaging();
+                  setFormatFilter(e.target.value);
+                }}
                 aria-label="Filter by format"
                 className="min-w-0 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -1181,7 +1259,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             {availableCategories.length > 0 && (
               <select
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                onChange={(e) => {
+                  resetPaging();
+                  setCategoryFilter(e.target.value);
+                }}
                 aria-label="Filter by category"
                 className="min-w-0 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -1193,7 +1274,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             )}
             <select
               value={listingFilter}
-              onChange={(e) => setListingFilter(e.target.value as typeof listingFilter)}
+              onChange={(e) => {
+                resetPaging();
+                setListingFilter(e.target.value as typeof listingFilter);
+              }}
               aria-label="Filter by listing status"
               className="col-span-2 px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -1205,7 +1289,14 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             </select>
             {(formatFilter || categoryFilter || assetKindFilter !== 'all' || packFilter || listingFilter !== 'all') && (
               <button
-                onClick={() => { setFormatFilter(''); setCategoryFilter(''); setAssetKindFilter('all'); setPackFilter(''); setListingFilter('all'); }}
+                onClick={() => {
+                  resetPaging();
+                  setFormatFilter('');
+                  setCategoryFilter('');
+                  setAssetKindFilter('all');
+                  setPackFilter('');
+                  setListingFilter('all');
+                }}
                 className="col-span-2 justify-self-start px-1 text-xs text-gray-400 hover:text-white"
                 title="Clear filters"
               >
@@ -1221,7 +1312,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           <select
             id="model-sort"
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            onChange={(e) => {
+              resetPaging();
+              setSortBy(e.target.value as typeof sortBy);
+            }}
             className="flex-1 min-w-0 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="recent">Recent first</option>
@@ -1308,7 +1402,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
       
       {/* Model / Review Queue */}
       <div className={`${isAssetSurface ? 'bg-gray-900 p-5' : 'p-4'} flex-1 overflow-y-auto`}>
-        {assetView === 'review' ? (
+        {HILL_CONTROLS_ENABLED && assetView === 'review' ? (
           isPromotionQueueLoading ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <svg className="w-16 h-16 text-gray-600 mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1506,8 +1600,9 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                   onLoad={selectMode ? () => toggleSelected(model.id) : onLoad}
                   onDelete={handleDelete}
                   onEdit={handleEdit}
-                  onRegenerate={selectMode ? undefined : handleRegenerate}
-                  onEnrich={selectMode ? undefined : handleEnrich}
+                  onKeep={selectMode ? undefined : handleKeep}
+                  onRegenerate={selectMode || !HILL_CONTROLS_ENABLED ? undefined : handleRegenerate}
+                  onEnrich={selectMode || !HILL_CONTROLS_ENABLED ? undefined : handleEnrich}
                 />
               </div>
             ))}
