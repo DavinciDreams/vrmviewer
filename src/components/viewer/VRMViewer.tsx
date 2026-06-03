@@ -518,7 +518,9 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   }, [isInitialized, onAnimationFrame]);
 
   const modelViewerFormatKey = modelViewerFormat?.toLowerCase();
+  const useGoogleModelViewer = import.meta.env.VITE_USE_GOOGLE_MODEL_VIEWER === 'true';
   const useModelViewerSurface = Boolean(
+    useGoogleModelViewer &&
     modelViewerSrc &&
     (!modelViewerFormatKey || modelViewerFormatKey === 'glb' || modelViewerFormatKey === 'gltf' || modelViewerFormatKey === 'vrm')
   );
