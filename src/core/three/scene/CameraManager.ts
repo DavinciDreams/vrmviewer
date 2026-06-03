@@ -248,15 +248,21 @@ export class CameraManager {
 
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
-    const fov = THREE.MathUtils.degToRad(this.camera.fov);
-    const distance = (radius / Math.sin(fov / 2)) * padding;
+    const radius = Math.max(size.length() * 0.5, 0.01);
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this.camera.aspect);
+    const fitHeightDistance = size.y / (2 * Math.tan(verticalFov / 2));
+    const fitWidthDistance = size.x / (2 * Math.tan(horizontalFov / 2));
+    const fitDepthDistance = size.z * 0.5;
+    const distance = Math.max(fitHeightDistance, fitWidthDistance, fitDepthDistance, radius) * padding;
     const direction = new THREE.Vector3(0.8, 0.45, 1).normalize();
 
     this.controls.target.copy(center);
     this.camera.position.copy(center).add(direction.multiplyScalar(distance));
-    this.camera.near = Math.max(distance - radius * 4, 0.01);
-    this.camera.far = Math.max(distance + radius * 4, 100);
+    this.camera.near = Math.max(distance - radius * 8, 0.001);
+    this.camera.far = Math.max(distance + radius * 8, 100);
+    this.controls.minDistance = Math.max(radius * 0.05, 0.01);
+    this.controls.maxDistance = Math.max(distance * 10, radius * 10, 10);
     this.camera.lookAt(center);
     this.camera.updateProjectionMatrix();
     this.controls.update();

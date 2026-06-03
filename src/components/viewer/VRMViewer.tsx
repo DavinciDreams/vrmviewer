@@ -86,6 +86,42 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const [isWireframe, setIsWireframe] = useState<boolean>(false);
   const [previousModelUuid, setPreviousModelUuid] = useState<string | null>(null);
 
+  const normalizeAndFrameModel = useCallback((model: typeof currentModel) => {
+    if (!model) return false;
+
+    model.scene.position.set(0, 0, 0);
+    model.scene.scale.setScalar(1);
+    model.scene.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(model.scene);
+    if (box.isEmpty()) {
+      cameraManager?.resetCamera();
+      return false;
+    }
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDimension = Math.max(size.x, size.y, size.z);
+
+    model.scene.position.sub(center);
+
+    // Asset imports vary wildly in units. Normalize by largest dimension so
+    // trees, cottages, props, and VRMs all land in a predictable review scale.
+    const targetMaxDimension = model.vrm ? 1.8 : 2.6;
+    const scale = maxDimension > 0 ? targetMaxDimension / maxDimension : 1;
+    model.scene.scale.setScalar(scale);
+    model.scene.updateMatrixWorld(true);
+
+    const fittedBox = new THREE.Box3().setFromObject(model.scene);
+    if (!fittedBox.isEmpty()) {
+      model.scene.position.y -= fittedBox.min.y;
+      model.scene.updateMatrixWorld(true);
+    }
+
+    cameraManager?.frameObject(model.scene);
+    return true;
+  }, []);
+
   /**
    * Apply visibility state to model
    */
@@ -343,38 +379,27 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     clearSceneModels();
 
     if (currentModel) {
-      currentModel.scene.position.set(0, 0, 0);
-      currentModel.scene.scale.setScalar(1);
-      currentModel.scene.updateMatrixWorld(true);
-
       // Add VRM to scene
       sceneRef.current!.add(currentModel.scene);
-      
-      // Center and scale VRM
-      const box = new THREE.Box3().setFromObject(currentModel.scene);
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      
-      // Center VRM
-      currentModel.scene.position.sub(center);
-      
-      // Scale to reasonable height
-      const targetHeight = 1.6; // meters
-      const scale = size.y > 0 ? targetHeight / size.y : 1;
-      currentModel.scene.scale.setScalar(scale);
-      currentModel.scene.updateMatrixWorld(true);
 
-      const fittedBox = new THREE.Box3().setFromObject(currentModel.scene);
-      currentModel.scene.position.y -= fittedBox.min.y;
-      currentModel.scene.updateMatrixWorld(true);
-      cameraManager?.frameObject(currentModel.scene);
+      normalizeAndFrameModel(currentModel);
+      let secondFrame: number | null = null;
+      const firstFrame = requestAnimationFrame(() => {
+        normalizeAndFrameModel(currentModel);
+        secondFrame = requestAnimationFrame(() => normalizeAndFrameModel(currentModel));
+      });
 
       // Notify parent (only if VRM object is available)
       if (onVRMLoaded && currentModel.vrm) {
         onVRMLoaded(currentModel.vrm);
       }
+
+      return () => {
+        cancelAnimationFrame(firstFrame);
+        if (secondFrame !== null) cancelAnimationFrame(secondFrame);
+      };
     }
-  }, [currentModel, isInitialized, onVRMLoaded]);
+  }, [currentModel, isInitialized, normalizeAndFrameModel, onVRMLoaded]);
 
   /**
    * Auto-capture thumbnail when model is loaded
@@ -497,7 +522,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
 
       {/* Playback info overlay */}
       {currentModel && !vrmLoading && !modelError && (
-        <div className="absolute bottom-4 left-4 bg-black/60 text-white px-3 py-2 rounded text-xs">
+        <div className="absolute bottom-28 left-4 bg-black/60 text-white px-3 py-2 rounded text-xs">
           <div className="flex items-center gap-2">
             {isPlaying && (
               <span className="flex items-center gap-1">
