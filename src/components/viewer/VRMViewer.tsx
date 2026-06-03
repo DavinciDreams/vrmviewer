@@ -14,7 +14,6 @@ import { initializeLightingManager, disposeLightingManager } from '../../core/th
 import { initializeSceneManager, disposeSceneManager } from '../../core/three/scene/SceneManager';
 import { captureThumbnail } from '../../utils/thumbnailUtils';
 import { useThumbnailCapture } from '../../hooks/useThumbnailCapture';
-import '@google/model-viewer';
 
 /**
  * VRMViewer imperative handle
@@ -517,39 +516,19 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     };
   }, [isInitialized, onAnimationFrame]);
 
-  const modelViewerFormatKey = modelViewerFormat?.toLowerCase();
-  const useGoogleModelViewer = import.meta.env.VITE_USE_GOOGLE_MODEL_VIEWER === 'true';
-  const useModelViewerSurface = Boolean(
-    useGoogleModelViewer &&
-    modelViewerSrc &&
-    (!modelViewerFormatKey || modelViewerFormatKey === 'glb' || modelViewerFormatKey === 'gltf' || modelViewerFormatKey === 'vrm')
-  );
+  void modelViewerSrc;
+  void modelViewerFormat;
 
   return (
     <div className="relative w-full h-full bg-gray-900">
       <canvas
         ref={canvasRef}
-        className={`w-full h-full block touch-none ${useModelViewerSurface ? 'opacity-0 pointer-events-none' : ''}`}
+        className="w-full h-full block touch-none"
         style={{ touchAction: 'none' }}
       />
 
-      {useModelViewerSurface && (
-        <model-viewer
-          className="absolute inset-x-0 top-0 bottom-36 block w-full overflow-hidden bg-[#f4f4ef]"
-          style={{ height: 'calc(100% - 9rem)' }}
-          src={modelViewerSrc}
-          alt={metadata?.name ? `${metadata.name} 3D model` : '3D model preview'}
-          camera-controls
-          auto-rotate
-          shadow-intensity="0.8"
-          exposure="1.15"
-          environment-image="neutral"
-          interaction-prompt="none"
-        />
-      )}
-
       {/* Loading indicator */}
-      {vrmLoading && !useModelViewerSurface && (
+      {vrmLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
           <div className="text-center">
             <svg className="w-16 h-16 text-blue-500 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -561,7 +540,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Error indicator */}
-      {modelError && !useModelViewerSurface && (
+      {modelError && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
           <div className="text-center">
             <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -574,7 +553,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Drop zone indicator */}
-      {!currentModel && !vrmLoading && !modelError && !useModelViewerSurface && (
+      {!currentModel && !vrmLoading && !modelError && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
             <svg className="w-16 h-16 text-gray-600 mx-auto mb-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">

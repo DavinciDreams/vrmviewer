@@ -169,7 +169,6 @@ Default API settings:
 | `ASSET_LIBRARY_DATA_DIR` | `./data/asset-library` | Model metadata and binary storage |
 | `ASSET_LIBRARY_STATIC_DIR` | unset | Optional built frontend directory to serve from the same Node process |
 | `ASSET_LIBRARY_MAX_BODY_MB` | `512` | Maximum JSON upload body size |
-| `VITE_USE_GOOGLE_MODEL_VIEWER` | unset | Optional experimental Google `<model-viewer>` surface for GLB/GLTF/VRM previews. Leave unset for the built-in Three/VRM viewer. |
 
 The Vite dev server proxies `/api` to `http://127.0.0.1:3100`, so no client
 configuration is needed for local development. Set `VITE_ASSET_LIBRARY_MODE=local`
