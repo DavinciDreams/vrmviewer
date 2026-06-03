@@ -533,7 +533,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
 
       {useModelViewerSurface && (
         <model-viewer
-          className="absolute inset-0 h-full w-full bg-[#f4f4ef]"
+          className="absolute inset-x-0 top-0 bottom-28 w-full bg-[#f4f4ef]"
           src={modelViewerSrc}
           alt={metadata?.name ? `${metadata.name} 3D model` : '3D model preview'}
           camera-controls
@@ -542,10 +542,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
           exposure="1.15"
           environment-image="neutral"
           interaction-prompt="none"
-          camera-orbit="45deg 65deg auto"
-          min-camera-orbit="auto auto 0.1m"
-          max-camera-orbit="auto auto 100m"
-          field-of-view="35deg"
+          camera-target="auto auto auto"
         />
       )}
 

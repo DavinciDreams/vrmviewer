@@ -13,6 +13,7 @@ declare module 'react' {
         'environment-image'?: string;
         'interaction-prompt'?: string;
         'camera-orbit'?: string;
+        'camera-target'?: string;
         'min-camera-orbit'?: string;
         'max-camera-orbit'?: string;
         'field-of-view'?: string;
