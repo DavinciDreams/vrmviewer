@@ -1481,9 +1481,9 @@ function App() {
       onExport={() => setIsExportDialogOpen(true)}
       isModelViewerOpen={isModelViewerOpen}
     >
-      <div className="relative flex flex-col h-full">
+      <div className="relative flex h-full min-h-0 flex-col">
         {/* Viewer */}
-        <div className="flex-1 relative">
+        <div className="relative min-h-0 flex-1 overflow-hidden pb-24">
           <VRMViewer
             ref={vrmViewerRef}
             onThumbnailCaptured={handleAutoThumbnailCaptured}
@@ -1494,23 +1494,19 @@ function App() {
               {modelLoadStatus ?? error}
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => setIsModelViewerOpen(false)}
-            className="absolute left-4 top-4 z-30 rounded-lg border border-gray-700 bg-gray-900/90 px-3 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-gray-800"
-          >
-            Back to assets
-          </button>
+          <div className="absolute left-4 top-4 z-30 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsModelViewerOpen(false)}
+              className="rounded-lg border border-gray-700 bg-gray-900/90 px-3 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-gray-800"
+            >
+              Back to assets
+            </button>
           
-          {hasModel && (
-            <>
-              <div className="absolute top-4 right-4 z-10">
-                <AssetInfoPanel model={currentModelRecord} />
-              </div>
-
-              {/* Save Model Button (only for unsaved models) */}
-              {unsavedModelFile && (
-                <div className="absolute top-4 left-4 z-10">
+            {hasModel && (
+              <>
+                {/* Save Model Button (only for unsaved models) */}
+                {unsavedModelFile && (
                   <Button
                     variant="primary"
                     size="md"
@@ -1536,11 +1532,25 @@ function App() {
                       </>
                     )}
                   </Button>
-                </div>
-              )}
+                )}
+
+                <ThumbnailCapture
+                  onCapture={handleThumbnailCapture}
+                  isCapturing={isCapturing}
+                  disabled={!hasModel}
+                />
+              </>
+            )}
+          </div>
+
+          {hasModel && (
+            <>
+              <div className="absolute top-4 right-4 z-10">
+                <AssetInfoPanel model={currentModelRecord} />
+              </div>
 
               {currentModelRecord?.lodTier && (
-                <div className="absolute top-4 left-4 z-10 rounded-lg border border-gray-700 bg-gray-900/80 px-3 py-2 text-xs text-white shadow-lg">
+                <div className="absolute left-4 top-20 z-10 rounded-lg border border-gray-700 bg-gray-900/80 px-3 py-2 text-xs text-white shadow-lg">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1585,14 +1595,8 @@ function App() {
                 </div>
               )}
               
-              <ThumbnailCapture
-                onCapture={handleThumbnailCapture}
-                isCapturing={isCapturing}
-                disabled={!hasModel}
-              />
-              
               {/* Controls Overlay */}
-              <div className="absolute bottom-4 left-4 right-4 space-y-3">
+              <div className="absolute bottom-6 left-4 right-4 z-20 space-y-3">
                 <ModelControls
                   isVisible={isModelVisible}
                   onVisibilityToggle={handleVisibilityToggle}
@@ -1612,7 +1616,7 @@ function App() {
           )}
 
           {hasModel && droppedFileTray && (
-            <div className="absolute right-4 top-20 z-20">
+            <div className="absolute right-4 top-28 z-20 max-w-[calc(100%-2rem)]">
               {droppedFileTray}
             </div>
           )}
