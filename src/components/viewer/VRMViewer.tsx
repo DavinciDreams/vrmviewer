@@ -69,7 +69,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const previewOutlineRef = useRef<THREE.Group | null>(null);
 
   // Store state
   const {
@@ -162,76 +161,12 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         const materials = Array.isArray(object.material) ? object.material : [object.material];
         materials.forEach((material) => {
           if (!material) return;
-          material.transparent = false;
-          material.opacity = 1;
-          material.alphaTest = 0;
-          material.depthTest = true;
-          material.depthWrite = true;
           material.side = THREE.DoubleSide;
           material.needsUpdate = true;
         });
       }
     });
   }, []);
-
-  const clearPreviewOutline = useCallback(() => {
-    const outline = previewOutlineRef.current;
-    if (!outline || !sceneRef.current) return;
-
-    sceneRef.current.remove(outline);
-    const materials = new Set<THREE.Material>();
-    outline.traverse((object) => {
-      if (object instanceof THREE.LineSegments) {
-        object.geometry.dispose();
-        if (Array.isArray(object.material)) {
-          object.material.forEach((material) => materials.add(material));
-        } else {
-          materials.add(object.material);
-        }
-      }
-    });
-    materials.forEach((material) => material.dispose());
-    previewOutlineRef.current = null;
-  }, []);
-
-  const rebuildPreviewOutline = useCallback((model: typeof currentModel) => {
-    if (!model || !sceneRef.current) return;
-
-    clearPreviewOutline();
-
-    const outline = new THREE.Group();
-    outline.name = 'vrmviewer-preview-outline';
-    const material = new THREE.LineBasicMaterial({
-      color: 0x111827,
-      transparent: true,
-      opacity: 0.45,
-      depthTest: false,
-      depthWrite: false,
-    });
-    let lineCount = 0;
-
-    model.scene.updateMatrixWorld(true);
-    model.scene.traverse((object) => {
-      if (!(object instanceof THREE.Mesh) || !object.geometry) return;
-      if (lineCount >= 20) return;
-
-      const edges = new THREE.EdgesGeometry(object.geometry, 35);
-      const line = new THREE.LineSegments(edges, material);
-      line.matrix.copy(object.matrixWorld);
-      line.matrixAutoUpdate = false;
-      line.renderOrder = 999;
-      outline.add(line);
-      lineCount += 1;
-    });
-
-    if (lineCount === 0) {
-      material.dispose();
-      return;
-    }
-
-    sceneRef.current.add(outline);
-    previewOutlineRef.current = outline;
-  }, [clearPreviewOutline]);
 
   const normalizeAndFrameModel = useCallback((model: typeof currentModel) => {
     if (!model) return false;
@@ -530,7 +465,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       });
     };
 
-    clearPreviewOutline();
     clearSceneModels(currentModel?.scene);
 
     if (currentModel) {
@@ -539,16 +473,13 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
 
       prepareModelForPreview(currentModel);
       normalizeAndFrameModel(currentModel);
-      rebuildPreviewOutline(currentModel);
       let secondFrame: number | null = null;
       const firstFrame = requestAnimationFrame(() => {
         prepareModelForPreview(currentModel);
         normalizeAndFrameModel(currentModel);
-        rebuildPreviewOutline(currentModel);
         secondFrame = requestAnimationFrame(() => {
           prepareModelForPreview(currentModel);
           normalizeAndFrameModel(currentModel);
-          rebuildPreviewOutline(currentModel);
         });
       });
 
@@ -560,18 +491,15 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       return () => {
         cancelAnimationFrame(firstFrame);
         if (secondFrame !== null) cancelAnimationFrame(secondFrame);
-        clearPreviewOutline();
       };
     }
     setDebugStats(null);
   }, [
-    clearPreviewOutline,
     currentModel,
     isInitialized,
     normalizeAndFrameModel,
     onVRMLoaded,
     prepareModelForPreview,
-    rebuildPreviewOutline,
   ]);
 
   /**

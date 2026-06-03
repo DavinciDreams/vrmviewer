@@ -81,11 +81,6 @@ const preparePreviewObject = (object: THREE.Object3D) => {
 
     const materials = Array.isArray(child.material) ? child.material : [child.material];
     materials.filter(Boolean).forEach((material) => {
-      material.transparent = false;
-      material.opacity = 1;
-      material.alphaTest = 0;
-      material.depthTest = true;
-      material.depthWrite = true;
       material.side = THREE.DoubleSide;
       material.needsUpdate = true;
     });
@@ -145,39 +140,6 @@ const InlineModelPreview: React.FC<InlineModelPreviewProps> = ({ model }) => {
     resize();
 
     let previewRoot: THREE.Object3D | null = null;
-    let previewOutline: THREE.Object3D | null = null;
-
-    const addPreviewOutline = (object: THREE.Object3D) => {
-      const outline = new THREE.Group();
-      const material = new THREE.LineBasicMaterial({
-        color: 0x111827,
-        transparent: true,
-        opacity: 0.5,
-        depthTest: false,
-        depthWrite: false,
-      });
-      let count = 0;
-
-      object.updateMatrixWorld(true);
-      object.traverse((child) => {
-        if (!(child instanceof THREE.Mesh) || !child.geometry || count >= 12) return;
-        const edges = new THREE.EdgesGeometry(child.geometry, 35);
-        const line = new THREE.LineSegments(edges, material);
-        line.matrix.copy(child.matrixWorld);
-        line.matrixAutoUpdate = false;
-        line.renderOrder = 999;
-        outline.add(line);
-        count += 1;
-      });
-
-      if (count === 0) {
-        material.dispose();
-        return;
-      }
-
-      scene.add(outline);
-      previewOutline = outline;
-    };
 
     const fitPreviewRoot = (object: THREE.Object3D) => {
       previewRoot = object;
@@ -196,8 +158,6 @@ const InlineModelPreview: React.FC<InlineModelPreviewProps> = ({ model }) => {
         -center.z * scale,
       );
       previewRoot.updateMatrixWorld(true);
-
-      addPreviewOutline(previewRoot);
 
       controls.target.set(0, Math.max(size.y * scale * 0.45, 0.4), 0);
       camera.position.set(0, controls.target.y + 0.35, Math.max(2.2, maxDim * scale * 1.6));
@@ -253,7 +213,6 @@ const InlineModelPreview: React.FC<InlineModelPreviewProps> = ({ model }) => {
       resizeObserver.disconnect();
       controls.dispose();
       if (previewRoot) disposeObject(previewRoot);
-      if (previewOutline) disposeObject(previewOutline);
       renderer.dispose();
       renderer.domElement.remove();
     };
