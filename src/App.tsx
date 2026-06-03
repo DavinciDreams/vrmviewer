@@ -38,10 +38,8 @@ import { cameraManager } from './core/three/scene/CameraManager';
 import { VRMHelper } from './core/three/vrm/VRMHelper';
 import { extractAllMetadata } from './core/metadata/MetadataPipeline';
 import { runBackfillIfNeeded, type BackfillProgress } from './core/metadata/backfill';
-import { getThumbnailService } from './core/database/services/ThumbnailService';
 import type { ExtractedBundle } from './core/database/services/ModelService';
 import { getPreferencesService } from './core/database/services/PreferencesService';
-import { parseDataUrl } from './utils/thumbnailUtils';
 import * as THREE from 'three';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { AnimationRecord, ModelRecord } from './types/database.types';
@@ -109,7 +107,6 @@ function App() {
     isLoading,
     error,
     metadata,
-    loadFromURL: loadModelFromURL,
     loadModelFromFile,
     clearCurrentModel,
   } = useModel();
@@ -175,8 +172,6 @@ function App() {
   const [pendingExtractedBundle, setPendingExtractedBundle] = useState<ExtractedBundle | undefined>(undefined);
   const saveExtractionTokenRef = useRef(0);
   
-  // Thumbnail service (singleton — stable identity for hook deps)
-  const thumbnailService = useMemo(() => getThumbnailService(), []);
   const [autoCapturedThumbnail, setAutoCapturedThumbnail] = useState<string | null>(null);
 
   // Live metadata-backfill progress for the toast. `null` while no backfill
@@ -774,26 +769,18 @@ function App() {
       // both are already data-URLs at this point.
       const thumbnailToSave = unsavedThumbnailData || autoCapturedThumbnail;
       if (thumbnailToSave) {
-        const { format, data } = parseDataUrl(thumbnailToSave);
+        const thumbnailResult = await models.update(modelUuid, {
+          thumbnailDataUrl: thumbnailToSave,
+        } as Partial<ModelRecord> & { thumbnailDataUrl: string });
 
-        const thumbnailResult = await thumbnailService.saveThumbnail({
-          uuid: crypto.randomUUID(),
-          name: `${modelUuid}_thumbnail`,
-          type: 'model',
-          targetUuid: modelUuid,
-          data,
-          format,
-          width: 256,
-          height: 256,
-          size: data.length,
-          createdAt: new Date(),
-        });
-
-        if (thumbnailResult.success && thumbnailResult.data) {
-          await models.update(modelUuid, {
-            thumbnail: thumbnailResult.data.uuid,
-          });
-          console.log('Thumbnail saved:', thumbnailResult.data.uuid);
+        if (hasSuccessAndData<ModelRecord>(thumbnailResult)) {
+          setCurrentModelRecord(thumbnailResult.data as ModelRecord);
+          window.dispatchEvent(new CustomEvent('vrmviewer:model-thumbnail-updated', {
+            detail: { uuid: modelUuid },
+          }));
+          console.log('Thumbnail saved for model:', modelUuid);
+        } else if (!thumbnailResult.success) {
+          console.warn('Model saved, but thumbnail update failed:', thumbnailResult.error);
         }
       }
       
@@ -816,7 +803,7 @@ function App() {
       setPendingExtractedBundle(undefined);
       setSaveDialogDefaults(null);
     }
-  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, pendingExtractedBundle, models, thumbnailService]);
+  }, [unsavedModelFile, unsavedModelData, unsavedThumbnailData, autoCapturedThumbnail, pendingExtractedBundle, models]);
 
   const handleCloseSaveDialog = useCallback(() => {
     setIsSaveDialogOpen(false);
@@ -956,9 +943,10 @@ function App() {
     if (modelRecord) {
       setModelLoadStatus(`Loading ${modelRecord.name}...`);
 
-      const fileVersion = modelRecord.updatedAt ? String(modelRecord.updatedAt) : modelRecord.sha256 ?? '';
-      const fileUrl = `/api/models/${encodeURIComponent(modelRecord.uuid)}/file?format=${encodeURIComponent(modelRecord.format)}&name=${encodeURIComponent(modelRecord.name)}&v=${encodeURIComponent(fileVersion)}`;
-      const loaded = await loadModelFromURL(fileUrl);
+      const file = new File([modelRecord.data], `${modelRecord.name}.${modelRecord.format}`, {
+        type: modelRecord.format === 'gltf' ? 'model/gltf+json' : 'model/gltf-binary',
+      });
+      const loaded = await loadModelFromFile(file);
       if (!loaded) {
         setModelLoadStatus(`Failed to load ${modelRecord.name}`);
         return;
@@ -974,7 +962,7 @@ function App() {
     } else {
       setModelLoadStatus('Model record could not be read from the library');
     }
-  }, [models, loadModelFromURL]);
+  }, [models, loadModelFromFile]);
 
   useEffect(() => {
     if (!currentModelRecord?.assetGroupId) {
