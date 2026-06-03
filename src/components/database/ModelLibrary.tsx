@@ -549,10 +549,12 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
       void fetchHillStatus();
       void fetchPromotionQueue();
     };
+    window.addEventListener('vrmviewer:model-saved', refreshModels);
     window.addEventListener('vrmviewer:model-thumbnail-updated', refreshModels);
     window.addEventListener('vrmviewer:hill-conjure-queued', refreshHillJobs);
     window.addEventListener('vrmviewer:hill-regen-queued', refreshHillJobs);
     return () => {
+      window.removeEventListener('vrmviewer:model-saved', refreshModels);
       window.removeEventListener('vrmviewer:model-thumbnail-updated', refreshModels);
       window.removeEventListener('vrmviewer:hill-conjure-queued', refreshHillJobs);
       window.removeEventListener('vrmviewer:hill-regen-queued', refreshHillJobs);

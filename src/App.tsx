@@ -697,6 +697,8 @@ function App() {
   const handleSaveModelConfirm = useCallback(async (form: SaveModelFormData) => {
     if (!unsavedModelFile || !unsavedModelData) {
       console.warn('No unsaved model to save');
+      setModelLoadStatus('No unsaved model is loaded');
+      window.setTimeout(() => setModelLoadStatus(null), 4000);
       setIsSaveDialogOpen(false);
       return;
     }
@@ -704,6 +706,7 @@ function App() {
     try {
       setIsSaving(true);
       setIsSaveDialogOpen(false);
+      setModelLoadStatus(`Saving ${form.name}...`);
 
       const modelName = form.name;
       const format = getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx';
@@ -741,6 +744,8 @@ function App() {
 
       if (!hasSuccessAndData<{ uuid: string }>(result)) {
         console.error('Failed to save model:', result.error);
+        setModelLoadStatus(result.error?.message ?? 'Failed to save model');
+        window.setTimeout(() => setModelLoadStatus(null), 6000);
         return;
       }
 
@@ -754,6 +759,9 @@ function App() {
       const modelUuid = result.data.uuid;
       setCurrentModelUuid(modelUuid);
       setCurrentModelRecord(result.data as ModelRecord);
+      window.dispatchEvent(new CustomEvent('vrmviewer:model-saved', {
+        detail: { uuid: modelUuid },
+      }));
 
       // Remember this as the last loaded model so the next session resumes here.
       getPreferencesService()
@@ -795,8 +803,12 @@ function App() {
       setAutoCapturedThumbnail(null);
       
       console.log('Model saved:', modelName);
+      setModelLoadStatus(`Saved ${modelName}`);
+      window.setTimeout(() => setModelLoadStatus(null), 3500);
     } catch (error) {
       console.error('Failed to save model:', error);
+      setModelLoadStatus(error instanceof Error ? error.message : 'Failed to save model');
+      window.setTimeout(() => setModelLoadStatus(null), 6000);
     } finally {
       setIsSaving(false);
       setPendingExtractedBundle(undefined);

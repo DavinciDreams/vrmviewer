@@ -43,8 +43,8 @@
     "@types/three": "^0.164.0",
     "@types/uuid": "^9.0.8",
     "@vitejs/plugin-react": "^6.0.1",
-    "@vitest/coverage-v8": "^4.0.17",
-    "@vitest/ui": "^4.0.17",
+    "@vitest/coverage-v8": "^4.1.8",
+    "@vitest/ui": "^4.1.8",
     "autoprefixer": "^10.4.18",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -58,7 +58,7 @@
     "typescript": "^5.2.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.11",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "ws": "^8.20.1"
