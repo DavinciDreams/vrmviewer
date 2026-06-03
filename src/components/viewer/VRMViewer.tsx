@@ -86,6 +86,26 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const [isWireframe, setIsWireframe] = useState<boolean>(false);
   const [previousModelUuid, setPreviousModelUuid] = useState<string | null>(null);
 
+  const prepareModelForPreview = useCallback((model: typeof currentModel) => {
+    if (!model) return;
+
+    model.scene.traverse((object) => {
+      object.frustumCulled = false;
+
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+          if (!material) return;
+          material.side = THREE.DoubleSide;
+          material.needsUpdate = true;
+        });
+      }
+    });
+  }, []);
+
   const normalizeAndFrameModel = useCallback((model: typeof currentModel) => {
     if (!model) return false;
 
@@ -103,13 +123,16 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     const size = box.getSize(new THREE.Vector3());
     const maxDimension = Math.max(size.x, size.y, size.z);
 
-    model.scene.position.sub(center);
-
     // Asset imports vary wildly in units. Normalize by largest dimension so
     // trees, cottages, props, and VRMs all land in a predictable review scale.
     const targetMaxDimension = model.vrm ? 1.8 : 2.6;
     const scale = maxDimension > 0 ? targetMaxDimension / maxDimension : 1;
     model.scene.scale.setScalar(scale);
+    model.scene.position.set(
+      -center.x * scale,
+      -box.min.y * scale,
+      -center.z * scale,
+    );
     model.scene.updateMatrixWorld(true);
 
     const fittedBox = new THREE.Box3().setFromObject(model.scene);
@@ -382,11 +405,16 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       // Add VRM to scene
       sceneRef.current!.add(currentModel.scene);
 
+      prepareModelForPreview(currentModel);
       normalizeAndFrameModel(currentModel);
       let secondFrame: number | null = null;
       const firstFrame = requestAnimationFrame(() => {
+        prepareModelForPreview(currentModel);
         normalizeAndFrameModel(currentModel);
-        secondFrame = requestAnimationFrame(() => normalizeAndFrameModel(currentModel));
+        secondFrame = requestAnimationFrame(() => {
+          prepareModelForPreview(currentModel);
+          normalizeAndFrameModel(currentModel);
+        });
       });
 
       // Notify parent (only if VRM object is available)
@@ -399,7 +427,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         if (secondFrame !== null) cancelAnimationFrame(secondFrame);
       };
     }
-  }, [currentModel, isInitialized, normalizeAndFrameModel, onVRMLoaded]);
+  }, [currentModel, isInitialized, normalizeAndFrameModel, onVRMLoaded, prepareModelForPreview]);
 
   /**
    * Auto-capture thumbnail when model is loaded

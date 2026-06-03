@@ -173,6 +173,7 @@ function App() {
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [saveDialogDefaults, setSaveDialogDefaults] = useState<SaveModelDialogDefaults | null>(null);
   const [pendingExtractedBundle, setPendingExtractedBundle] = useState<ExtractedBundle | undefined>(undefined);
+  const saveExtractionTokenRef = useRef(0);
   
   // Thumbnail service (singleton — stable identity for hook deps)
   const thumbnailService = useMemo(() => getThumbnailService(), []);
@@ -638,55 +639,55 @@ function App() {
   }, [handleDrop]);
   
   /**
-   * Open the save-model dialog. Extracts metadata up front so the dialog
-   * can pre-fill license fields with what the pipeline auto-detected from
-   * the VRM, letting users review + override before committing. The actual
-   * save runs in `handleSaveModelConfirm` once the user clicks "Save to
-   * Library".
+   * Open the save-model dialog immediately. Metadata extraction can take a
+   * noticeable amount of time for large GLBs, so it runs in the background
+   * and enriches the save only if it finishes before the user confirms.
    */
   const handleOpenSaveDialog = useCallback(async () => {
     if (!unsavedModelFile || !unsavedModelData) {
       console.warn('No unsaved model to save');
+      setModelLoadStatus('No unsaved model is loaded');
+      window.setTimeout(() => setModelLoadStatus(null), 4000);
       return;
     }
 
     const format = getFileExtension(unsavedModelFile.name) as 'vrm' | 'gltf' | 'glb' | 'fbx';
+    const baseName = unsavedModelFile.name.replace(/\.[^.]+$/, '') || 'model';
+    const suggestedName = generateUniqueName(metadata?.name || baseName, []);
+    const extractionToken = saveExtractionTokenRef.current + 1;
+    saveExtractionTokenRef.current = extractionToken;
 
-    // Run extraction now so the dialog can show what was auto-detected.
-    // Failure falls through to an empty-default open — the user can still
-    // fill in license info manually.
-    let extractedBundle: ExtractedBundle | undefined;
+    setPendingExtractedBundle(undefined);
+    setSaveDialogDefaults({
+      name: suggestedName,
+      description: '',
+      author: '',
+      license: '',
+      normalizedLicense: null,
+    });
+    setIsSaveDialogOpen(true);
+    setModelLoadStatus('Save dialog ready');
+    window.setTimeout(() => setModelLoadStatus(null), 2000);
+
+    // Run extraction after opening so large assets don't make the button feel
+    // broken. If it finishes before confirmation, `handleSaveModelConfirm`
+    // will use the promoted metadata/dedup bundle.
     if (currentModel?.scene) {
       try {
-        extractedBundle = (await extractAllMetadata({
+        const extractedBundle = (await extractAllMetadata({
           scene: currentModel.scene,
           vrm: currentModel.vrm,
           buffer: unsavedModelData,
           format,
         })) as ExtractedBundle;
+        if (saveExtractionTokenRef.current === extractionToken) {
+          setPendingExtractedBundle(extractedBundle);
+        }
       } catch (err) {
-        console.warn('[save] metadata extraction failed; opening with empty defaults:', err);
+        console.warn('[save] metadata extraction failed; saving can continue with form defaults:', err);
       }
     }
-
-    // Generate the name suggestion the same way the previous flow did so
-    // the dialog opens with a sensible default in the Name field.
-    const getAllResult = await models.getAll();
-    const existingNames = hasData(getAllResult)
-      ? getAllResult.data.map((m: { name: string }) => m.name)
-      : [];
-    const suggestedName = generateUniqueName(metadata?.name || 'model', existingNames);
-
-    setPendingExtractedBundle(extractedBundle);
-    setSaveDialogDefaults({
-      name: suggestedName,
-      description: '',
-      author: extractedBundle?.normalizedLicense?.licenseName ? '' : '',
-      license: extractedBundle?.normalizedLicense?.licenseName ?? '',
-      normalizedLicense: extractedBundle?.normalizedLicense ?? null,
-    });
-    setIsSaveDialogOpen(true);
-  }, [unsavedModelFile, unsavedModelData, currentModel, metadata, models]);
+  }, [unsavedModelFile, unsavedModelData, currentModel, metadata]);
 
   /**
    * Handle save-dialog confirmation. Uses the form values to override the
@@ -810,6 +811,7 @@ function App() {
       setModelLoadStatus(error instanceof Error ? error.message : 'Failed to save model');
       window.setTimeout(() => setModelLoadStatus(null), 6000);
     } finally {
+      saveExtractionTokenRef.current += 1;
       setIsSaving(false);
       setPendingExtractedBundle(undefined);
       setSaveDialogDefaults(null);
