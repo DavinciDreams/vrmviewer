@@ -290,9 +290,10 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
           const renderer = new THREE.WebGLRenderer({
             canvas: canvasRef.current!,
             antialias: false,
-            alpha: true,
+            alpha: false,
             powerPreference: 'high-performance',
           });
+          renderer.setClearColor(new THREE.Color(0x1a1a2e), 1);
           renderer.setSize(width, height);
           renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
           renderer.shadowMap.enabled = true;
@@ -523,7 +524,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     <div className="relative w-full h-full bg-gray-900">
       <canvas
         ref={canvasRef}
-        className="w-full h-full block touch-none"
+        className="w-full h-full block touch-none bg-gray-900"
         style={{ touchAction: 'none' }}
       />
 
