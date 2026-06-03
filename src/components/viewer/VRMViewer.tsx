@@ -14,16 +14,7 @@ import { initializeLightingManager, disposeLightingManager } from '../../core/th
 import { initializeSceneManager, disposeSceneManager } from '../../core/three/scene/SceneManager';
 import { captureThumbnail } from '../../utils/thumbnailUtils';
 import { useThumbnailCapture } from '../../hooks/useThumbnailCapture';
-
-type ViewerDebugStats = {
-  meshes: number;
-  vertices: number;
-  triangles: number;
-  materials: number;
-  texturedMaterials: number;
-  size: THREE.Vector3;
-  cameraDistance: number | null;
-};
+import '@google/model-viewer';
 
 /**
  * VRMViewer imperative handle
@@ -41,6 +32,8 @@ export interface VRMViewerHandle {
  * VRMViewer props
  */
 export interface VRMViewerProps {
+  modelViewerSrc?: string;
+  modelViewerFormat?: string;
   onCanvasRef?: (canvas: HTMLCanvasElement) => void;
   onVRMLoaded?: (vrm: VRM) => void;
   onAnimationFrame?: () => void;
@@ -57,6 +50,8 @@ export interface VRMViewerProps {
  * VRMViewer component
  */
 export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
+  modelViewerSrc,
+  modelViewerFormat,
   onCanvasRef,
   onVRMLoaded,
   onAnimationFrame,
@@ -95,58 +90,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const [isWireframe, setIsWireframe] = useState<boolean>(false);
   const [previousModelUuid, setPreviousModelUuid] = useState<string | null>(null);
-  const [debugStats, setDebugStats] = useState<ViewerDebugStats | null>(null);
-
-  const collectDebugStats = useCallback((model: typeof currentModel) => {
-    if (!model) {
-      setDebugStats(null);
-      return;
-    }
-
-    const stats: ViewerDebugStats = {
-      meshes: 0,
-      vertices: 0,
-      triangles: 0,
-      materials: 0,
-      texturedMaterials: 0,
-      size: new THREE.Vector3(),
-      cameraDistance: null,
-    };
-    const seenMaterials = new Set<THREE.Material>();
-
-    model.scene.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      stats.meshes += 1;
-      const geometry = object.geometry;
-      const position = geometry?.getAttribute('position');
-      if (position) stats.vertices += position.count;
-      if (geometry?.index) {
-        stats.triangles += Math.floor(geometry.index.count / 3);
-      } else if (position) {
-        stats.triangles += Math.floor(position.count / 3);
-      }
-
-      const materials = Array.isArray(object.material) ? object.material : [object.material];
-      materials.forEach((material) => {
-        if (!material || seenMaterials.has(material)) return;
-        seenMaterials.add(material);
-        stats.materials += 1;
-        if ('map' in material && material.map) {
-          stats.texturedMaterials += 1;
-        }
-      });
-    });
-
-    const box = new THREE.Box3().setFromObject(model.scene);
-    if (!box.isEmpty()) {
-      box.getSize(stats.size);
-      const center = box.getCenter(new THREE.Vector3());
-      const camera = cameraManager?.getCamera();
-      stats.cameraDistance = camera ? camera.position.distanceTo(center) : null;
-    }
-
-    setDebugStats(stats);
-  }, []);
 
   const prepareModelForPreview = useCallback((model: typeof currentModel) => {
     if (!model) return;
@@ -204,9 +147,8 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     }
 
     cameraManager?.frameObject(model.scene);
-    collectDebugStats(model);
     return true;
-  }, [collectDebugStats]);
+  }, []);
 
   /**
    * Apply visibility state to model
@@ -493,7 +435,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         if (secondFrame !== null) cancelAnimationFrame(secondFrame);
       };
     }
-    setDebugStats(null);
   }, [
     currentModel,
     isInitialized,
@@ -576,16 +517,40 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     };
   }, [isInitialized, onAnimationFrame]);
 
+  const modelViewerFormatKey = modelViewerFormat?.toLowerCase();
+  const useModelViewerSurface = Boolean(
+    modelViewerSrc &&
+    (!modelViewerFormatKey || modelViewerFormatKey === 'glb' || modelViewerFormatKey === 'gltf' || modelViewerFormatKey === 'vrm')
+  );
+
   return (
     <div className="relative w-full h-full bg-gray-900">
       <canvas
         ref={canvasRef}
-        className="w-full h-full block touch-none"
+        className={`w-full h-full block touch-none ${useModelViewerSurface ? 'opacity-0 pointer-events-none' : ''}`}
         style={{ touchAction: 'none' }}
       />
 
+      {useModelViewerSurface && (
+        <model-viewer
+          className="absolute inset-0 h-full w-full bg-[#f4f4ef]"
+          src={modelViewerSrc}
+          alt={metadata?.name ? `${metadata.name} 3D model` : '3D model preview'}
+          camera-controls
+          auto-rotate
+          shadow-intensity="0.8"
+          exposure="1.15"
+          environment-image="neutral"
+          interaction-prompt="none"
+          camera-orbit="45deg 65deg auto"
+          min-camera-orbit="auto auto 0.1m"
+          max-camera-orbit="auto auto 100m"
+          field-of-view="35deg"
+        />
+      )}
+
       {/* Loading indicator */}
-      {vrmLoading && (
+      {vrmLoading && !useModelViewerSurface && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
           <div className="text-center">
             <svg className="w-16 h-16 text-blue-500 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -597,7 +562,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Error indicator */}
-      {modelError && (
+      {modelError && !useModelViewerSurface && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-gray-900/80">
           <div className="text-center">
             <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -610,7 +575,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       )}
 
       {/* Drop zone indicator */}
-      {!currentModel && !vrmLoading && !modelError && (
+      {!currentModel && !vrmLoading && !modelError && !useModelViewerSurface && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
             <svg className="w-16 h-16 text-gray-600 mx-auto mb-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -646,22 +611,6 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         </div>
       )}
 
-      {currentModel && debugStats && !vrmLoading && !modelError && (
-        <div className="absolute bottom-28 right-4 max-w-xs rounded bg-black/60 px-3 py-2 text-[11px] leading-5 text-white">
-          <div>
-            Meshes {debugStats.meshes} · Tris {debugStats.triangles.toLocaleString()}
-          </div>
-          <div>
-            Materials {debugStats.materials} · Textured {debugStats.texturedMaterials}
-          </div>
-          <div>
-            Size {debugStats.size.x.toFixed(2)} × {debugStats.size.y.toFixed(2)} × {debugStats.size.z.toFixed(2)}
-          </div>
-          <div>
-            Camera {debugStats.cameraDistance === null ? 'n/a' : debugStats.cameraDistance.toFixed(2)}
-          </div>
-        </div>
-      )}
     </div>
   );
 });

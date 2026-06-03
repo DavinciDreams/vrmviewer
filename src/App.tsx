@@ -46,6 +46,7 @@ import type { AnimationRecord, ModelRecord } from './types/database.types';
 
 type LoadedModelRecord = ModelRecord | (Omit<ModelRecord, 'data'> & { data?: undefined });
 const LOD_ORDER = ['lod0', 'lod1', 'lod2', 'lod3'] as const;
+type ModelViewerSource = { url: string; isObjectUrl: boolean; format: string };
 
 /**
  * Type guard to check if result has data property
@@ -153,6 +154,8 @@ function App() {
   const [currentModelRecord, setCurrentModelRecord] = useState<LoadedModelRecord | null>(null);
   const [lodSiblingRecords, setLodSiblingRecords] = useState<LoadedModelRecord[]>([]);
   const [modelLoadStatus, setModelLoadStatus] = useState<string | null>(null);
+  const [modelViewerSource, setModelViewerSource] = useState<ModelViewerSource | null>(null);
+  const modelViewerSourceRef = useRef<ModelViewerSource | null>(null);
 
   // Track thumbnail capture state for visual feedback
   const [isCapturing, setIsCapturing] = useState(false);
@@ -173,6 +176,22 @@ function App() {
   const saveExtractionTokenRef = useRef(0);
   
   const [autoCapturedThumbnail, setAutoCapturedThumbnail] = useState<string | null>(null);
+
+  const replaceModelViewerSource = useCallback((next: ModelViewerSource | null) => {
+    const previous = modelViewerSourceRef.current;
+    if (previous?.isObjectUrl) {
+      URL.revokeObjectURL(previous.url);
+    }
+    modelViewerSourceRef.current = next;
+    setModelViewerSource(next);
+  }, []);
+
+  useEffect(() => () => {
+    const current = modelViewerSourceRef.current;
+    if (current?.isObjectUrl) {
+      URL.revokeObjectURL(current.url);
+    }
+  }, []);
 
   // Live metadata-backfill progress for the toast. `null` while no backfill
   // is active; the toast also hides itself when `total === 0`.
@@ -532,6 +551,7 @@ function App() {
       setUnsavedModelData(null);
       setUnsavedThumbnailData(null);
       setAutoCapturedThumbnail(null);
+      replaceModelViewerSource(null);
 
       // Load model
       const model = await loadModelFromFile(file);
@@ -558,6 +578,11 @@ function App() {
         const fileData = await file.arrayBuffer();
         setUnsavedModelFile(file);
         setUnsavedModelData(fileData);
+        replaceModelViewerSource({
+          url: URL.createObjectURL(file),
+          isObjectUrl: true,
+          format: normalizedExtension,
+        });
         setModelLoadStatus(null);
       } else {
         setModelLoadStatus(`Could not load ${file.name}`);
@@ -588,7 +613,7 @@ function App() {
       setModelLoadStatus(`Unsupported file type: ${file.name}`);
       window.setTimeout(() => setModelLoadStatus(null), 5000);
     }
-  }, [loadModelFromFile, clearCurrentModel]);
+  }, [loadModelFromFile, clearCurrentModel, replaceModelViewerSource]);
 
   /**
    * Handle file drop
@@ -931,6 +956,7 @@ function App() {
     setUnsavedThumbnailData(null);
     setCurrentModelRecord(null);
     setLodSiblingRecords([]);
+    replaceModelViewerSource(null);
     
     // Set current model UUID to enable thumbnail re-capture
     setCurrentModelUuid(modelId);
@@ -953,6 +979,11 @@ function App() {
       }
 
       setCurrentModelRecord(modelRecord);
+      replaceModelViewerSource({
+        url: URL.createObjectURL(file),
+        isObjectUrl: true,
+        format: modelRecord.format,
+      });
       setModelLoadStatus(null);
 
       // Remember this as the last loaded model for next session.
@@ -962,7 +993,7 @@ function App() {
     } else {
       setModelLoadStatus('Model record could not be read from the library');
     }
-  }, [models, loadModelFromFile]);
+  }, [models, loadModelFromFile, replaceModelViewerSource]);
 
   useEffect(() => {
     if (!currentModelRecord?.assetGroupId) {
@@ -1060,6 +1091,7 @@ function App() {
         setIsModelViewerOpen(false);
         setCurrentModelUuid(null);
         setCurrentModelRecord(null);
+        replaceModelViewerSource(null);
         // Don't keep pointing the resume flow at a model that no longer exists.
         getPreferencesService()
           .deletePreference('lastModelUuid')
@@ -1071,7 +1103,7 @@ function App() {
       console.error('Failed to delete model:', result.error);
       return { success: false, error: result.error };
     }
-  }, [models, currentModelUuid, clearCurrentModel]);
+  }, [models, currentModelUuid, clearCurrentModel, replaceModelViewerSource]);
   
   /**
    * Handle model update from library
@@ -1476,6 +1508,8 @@ function App() {
         <div className="relative min-h-0 flex-1 overflow-hidden pb-24">
           <VRMViewer
             ref={vrmViewerRef}
+            modelViewerSrc={modelViewerSource?.url}
+            modelViewerFormat={modelViewerSource?.format}
             onThumbnailCaptured={handleAutoThumbnailCaptured}
           />
 
