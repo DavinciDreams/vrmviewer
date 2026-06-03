@@ -553,6 +553,13 @@ function App() {
       setAutoCapturedThumbnail(null);
       replaceModelViewerSource(null);
 
+      // Stage the raw file for persistence before preview parsing. Large or
+      // unusual assets can fail the preview loader while still being valid
+      // files that should be saved into the library for later repair/review.
+      const fileData = await file.arrayBuffer();
+      setUnsavedModelFile(file);
+      setUnsavedModelData(fileData);
+
       // Load model
       const model = await loadModelFromFile(file);
       if (model) {
@@ -574,10 +581,6 @@ function App() {
           return;
         }
 
-        // Store unsaved model data
-        const fileData = await file.arrayBuffer();
-        setUnsavedModelFile(file);
-        setUnsavedModelData(fileData);
         replaceModelViewerSource({
           url: URL.createObjectURL(file),
           isObjectUrl: true,
@@ -585,7 +588,7 @@ function App() {
         });
         setModelLoadStatus(null);
       } else {
-        setModelLoadStatus(`Could not load ${file.name}`);
+        setModelLoadStatus(`Preview failed for ${file.name}; file is still ready to save`);
         window.setTimeout(() => setModelLoadStatus(null), 5000);
       }
     } else if (fileType === 'animation') {
@@ -1370,7 +1373,7 @@ function App() {
     }
   }, [bottomGeneratePrompt, isBottomGenerating]);
   
-  const hasModel = !!currentModel;
+  const hasModel = Boolean(currentModel || unsavedModelFile || currentModelRecord);
   const exportMetadata = useMemo(() => (
     currentModelRecord ? {
       format: currentModelRecord.format === 'fbx' ? 'glb' as const : currentModelRecord.format,
