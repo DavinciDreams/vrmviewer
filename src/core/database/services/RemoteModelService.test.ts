@@ -2,9 +2,8 @@
  * RemoteModelService — server-backed model library client (added in commit
  * 79a9012, no test coverage when it landed).
  *
- * `fetch` is mocked globally per-test; jsdom's FileReader is used for the
- * real base64 round-trip in saveModel/loadModel. Every method has a happy
- * path + at least one failure path covered.
+ * `fetch` is mocked globally per-test. Every method has a happy path + at
+ * least one failure path covered.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -174,7 +173,15 @@ describe('RemoteModelService — initialize', () => {
 // ---------------------------------------------------------------------------
 
 describe('RemoteModelService — saveModel', () => {
-  it('POSTs to /api/models with base64-encoded data and bundle-promoted fields', async () => {
+  async function postedMetadata(): Promise<Record<string, unknown>> {
+    const body = lastFetchArgs()[1]!.body;
+    expect(body).toBeInstanceOf(FormData);
+    const metadata = (body as FormData).get('metadata');
+    expect(metadata).toBeTypeOf('string');
+    return JSON.parse(metadata as string) as Record<string, unknown>;
+  }
+
+  it('POSTs to /api/models as multipart data with bundle-promoted fields', async () => {
     setNextResponses([
       healthResponse,
       {
@@ -198,9 +205,13 @@ describe('RemoteModelService — saveModel', () => {
     const [url, init] = lastFetchArgs();
     expect(url).toBe('/api/models');
     expect(init?.method).toBe('POST');
-    const payload = JSON.parse((init!.body as string));
-    expect(payload.dataBase64).toBeTypeOf('string');
+    const payload = await postedMetadata();
+    const file = (init!.body as FormData).get('file') as File;
+    expect(file).toBeInstanceOf(File);
+    expect(file.name).toBe('model.vrm');
+    expect(file.size).toBe(newModelInsert().data.byteLength);
     expect(payload.data).toBeUndefined();
+    expect(payload.dataBase64).toBeUndefined();
     expect(payload.sha256).toBe('sha-1');
     expect(payload.polyBucket).toBe('mid');
     expect(payload.isHumanoid).toBe(true);
@@ -235,7 +246,7 @@ describe('RemoteModelService — saveModel', () => {
     const svc = new RemoteModelService();
     await svc.saveModel(newModelInsert(), undefined, bundle(), true);
 
-    const payload = JSON.parse((lastFetchArgs()[1]!.body as string));
+    const payload = await postedMetadata();
     expect(payload.skipDedup).toBe(true);
   });
 
@@ -248,7 +259,7 @@ describe('RemoteModelService — saveModel', () => {
     const svc = new RemoteModelService();
     await svc.saveModel(newModelInsert(), undefined, bundle());
 
-    const payload = JSON.parse((lastFetchArgs()[1]!.body as string));
+    const payload = await postedMetadata();
     expect(payload.license).toBe('CC_BY');
   });
 
@@ -261,7 +272,7 @@ describe('RemoteModelService — saveModel', () => {
     const svc = new RemoteModelService();
     await svc.saveModel({ ...newModelInsert(), license: 'My-License' }, undefined, bundle());
 
-    const payload = JSON.parse((lastFetchArgs()[1]!.body as string));
+    const payload = await postedMetadata();
     expect(payload.license).toBe('My-License');
   });
 
@@ -274,7 +285,7 @@ describe('RemoteModelService — saveModel', () => {
     const svc = new RemoteModelService();
     await svc.saveModel(newModelInsert());
 
-    const payload = JSON.parse((lastFetchArgs()[1]!.body as string));
+    const payload = await postedMetadata();
     expect(payload.sha256).toBeUndefined();
     expect(payload.polyBucket).toBeUndefined();
   });

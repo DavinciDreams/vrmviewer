@@ -533,7 +533,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
 
       {useModelViewerSurface && (
         <model-viewer
-          className="absolute inset-x-0 top-0 bottom-28 w-full bg-[#f4f4ef]"
+          className="absolute inset-x-0 top-0 bottom-36 block w-full overflow-hidden bg-[#f4f4ef]"
           src={modelViewerSrc}
           alt={metadata?.name ? `${metadata.name} 3D model` : '3D model preview'}
           camera-controls
@@ -585,7 +585,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
 
       {/* Playback info overlay */}
       {currentModel && !vrmLoading && !modelError && (
-        <div className="absolute bottom-28 left-4 bg-black/60 text-white px-3 py-2 rounded text-xs">
+        <div className="absolute bottom-40 left-4 bg-black/60 text-white px-3 py-2 rounded text-xs">
           <div className="flex items-center gap-2">
             {isPlaying && (
               <span className="flex items-center gap-1">

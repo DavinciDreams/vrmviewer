@@ -208,6 +208,21 @@ async function readBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
+async function readMultipartBody(req) {
+  const body = await readRawBody(req);
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value == null) continue;
+    headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+  }
+  const request = new Request('http://asset-library.local/', {
+    method: req.method,
+    headers,
+    body,
+  });
+  return await request.formData();
+}
+
 function modelDir(uuid) {
   return path.join(MODELS_DIR, uuid);
 }
@@ -1111,18 +1126,13 @@ function buildModelRecord(payload, existing) {
   };
 }
 
-async function saveModel(payload, { skipDedup = false } = {}) {
-  if (!payload?.dataBase64 || typeof payload.dataBase64 !== 'string') {
-    throw new Error('dataBase64 is required');
-  }
-
+async function saveModelBuffer(payload, buffer, { skipDedup = false } = {}) {
   if (!skipDedup && payload.sha256) {
     const existing = await findBySha256(payload.sha256);
     if (existing) return { record: existing, wasDeduped: true };
   }
 
   const record = buildModelRecord(payload);
-  const buffer = Buffer.from(payload.dataBase64, 'base64');
   record.size = buffer.byteLength;
 
   await mkdir(modelDir(record.uuid), { recursive: true });
@@ -1132,6 +1142,31 @@ async function saveModel(payload, { skipDedup = false } = {}) {
   invalidateModelRecordsCache();
 
   return { record, wasDeduped: false };
+}
+
+async function saveModel(payload, { skipDedup = false } = {}) {
+  if (!payload?.dataBase64 || typeof payload.dataBase64 !== 'string') {
+    throw new Error('dataBase64 is required');
+  }
+
+  return saveModelBuffer(payload, Buffer.from(payload.dataBase64, 'base64'), { skipDedup });
+}
+
+async function saveMultipartModel(req) {
+  const form = await readMultipartBody(req);
+  const metadata = form.get('metadata');
+  const file = form.get('file');
+
+  if (typeof metadata !== 'string') {
+    throw new Error('metadata is required');
+  }
+  if (!file || typeof file !== 'object' || typeof file.arrayBuffer !== 'function') {
+    throw new Error('file is required');
+  }
+
+  const payload = JSON.parse(metadata);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return saveModelBuffer(payload, buffer, { skipDedup: payload.skipDedup === true });
 }
 
 async function saveModelFromFile(filePath, payload, { skipDedup = false } = {}) {
@@ -2385,8 +2420,13 @@ async function handle(req, res) {
     }
 
     if (url.pathname === '/api/models' && req.method === 'POST') {
-      const body = await readBody(req);
-      const { record, wasDeduped } = await saveModel(body, { skipDedup: body.skipDedup === true });
+      const contentType = String(req.headers['content-type'] ?? '');
+      const { record, wasDeduped } = contentType.toLowerCase().startsWith('multipart/form-data')
+        ? await saveMultipartModel(req)
+        : await (async () => {
+            const body = await readBody(req);
+            return saveModel(body, { skipDedup: body.skipDedup === true });
+          })();
       return json(res, wasDeduped ? 200 : 201, {
         success: true,
         data: toIsoRecord(record),

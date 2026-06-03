@@ -33,19 +33,6 @@ function getApiBaseUrl(): string {
   return (import.meta.env.VITE_ASSET_LIBRARY_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api';
 }
 
-async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
-  const blob = new Blob([buffer]);
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result ?? '');
-      resolve(result.includes(',') ? result.split(',')[1] : result);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -114,8 +101,7 @@ export class RemoteModelService {
   ): Promise<SaveModelResult> {
     try {
       await this.initialize();
-      const dataBase64 = await arrayBufferToBase64(model.data);
-      const payload = {
+      const metadata = {
         ...model,
         ...(extractedBundle
           ? {
@@ -130,14 +116,19 @@ export class RemoteModelService {
             }
           : {}),
         data: undefined,
-        dataBase64,
         skipDedup,
       };
+      const form = new FormData();
+      form.append('metadata', JSON.stringify(metadata));
+      form.append(
+        'file',
+        new Blob([model.data], { type: model.format === 'glb' ? 'model/gltf-binary' : 'application/octet-stream' }),
+        `model.${model.format}`,
+      );
 
       const response = await fetch(`${this.baseUrl}/models`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: form,
       });
       const value = await readJsonResponse<{ success: true; data: RemoteModelRecord; wasDeduped?: boolean }>(response);
       return {
