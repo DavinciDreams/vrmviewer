@@ -35,6 +35,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
   return (
     <div
       {...getRootProps()}
+      data-vrm-dropzone="true"
       className={`
         relative border-2 border-dashed rounded-lg transition-all duration-200
         ${isDragActive

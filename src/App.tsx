@@ -524,6 +524,9 @@ function App() {
     const fileType = getFileTypeFromExtension(extension);
     const normalizedExtension = extension.replace(/^\./, '');
 
+    setIsModelViewerOpen(true);
+    setModelLoadStatus(`Loading ${file.name}...`);
+
     if (fileType === 'model') {
       // Clear current model and unsaved state before loading new model
       clearCurrentModel();
@@ -550,6 +553,8 @@ function App() {
           setPendingAnimationClip(model.animations[0]);
           setIsAnimationEditorOpen(true);
           clearCurrentModel();
+          setModelLoadStatus(`Loaded animation from ${file.name}`);
+          window.setTimeout(() => setModelLoadStatus(null), 2500);
           return;
         }
 
@@ -557,6 +562,10 @@ function App() {
         const fileData = await file.arrayBuffer();
         setUnsavedModelFile(file);
         setUnsavedModelData(fileData);
+        setModelLoadStatus(null);
+      } else {
+        setModelLoadStatus(`Could not load ${file.name}`);
+        window.setTimeout(() => setModelLoadStatus(null), 5000);
       }
     } else if (fileType === 'animation') {
       // Load animation
@@ -566,6 +575,8 @@ function App() {
             setPendingAnimationFile(file);
             setPendingAnimationClip(result.data.animation);
             setIsAnimationEditorOpen(true);
+            setModelLoadStatus(`Loaded animation ${file.name}`);
+            window.setTimeout(() => setModelLoadStatus(null), 2500);
           }
       } else if (normalizedExtension === 'vrma') {
         const result = await vrmaLoader.loadFromFile(file);
@@ -573,8 +584,13 @@ function App() {
             setPendingAnimationFile(file);
             setPendingAnimationClip(result.data.animation);
             setIsAnimationEditorOpen(true);
+            setModelLoadStatus(`Loaded animation ${file.name}`);
+            window.setTimeout(() => setModelLoadStatus(null), 2500);
           }
       }
+    } else {
+      setModelLoadStatus(`Unsupported file type: ${file.name}`);
+      window.setTimeout(() => setModelLoadStatus(null), 5000);
     }
   }, [loadModelFromFile, clearCurrentModel]);
 
@@ -586,12 +602,40 @@ function App() {
       console.warn('Database not initialized yet. Please wait...');
       return;
     }
+    setIsModelViewerOpen(true);
     setDroppedFiles((prev) => [...prev, ...files]);
 
     for (const file of files) {
       await handleFileLoad(file);
     }
   }, [isInitialized, handleFileLoad]);
+
+  useEffect(() => {
+    const isFileDrag = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files');
+
+    const handleWindowDragOver = (event: DragEvent) => {
+      if (!isFileDrag(event)) return;
+      event.preventDefault();
+    };
+
+    const handleWindowDrop = (event: DragEvent) => {
+      if (!isFileDrag(event)) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('[data-vrm-dropzone="true"]')) return;
+
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length === 0) return;
+      event.preventDefault();
+      void handleDrop(files);
+    };
+
+    window.addEventListener('dragover', handleWindowDragOver);
+    window.addEventListener('drop', handleWindowDrop);
+    return () => {
+      window.removeEventListener('dragover', handleWindowDragOver);
+      window.removeEventListener('drop', handleWindowDrop);
+    };
+  }, [handleDrop]);
   
   /**
    * Open the save-model dialog. Extracts metadata up front so the dialog
@@ -1385,6 +1429,33 @@ function App() {
   ) : (
     <p className="text-sm text-gray-400">Load a model to use viewer controls.</p>
   );
+
+  const droppedFileTray = droppedFiles.length > 0 ? (
+    <div className="pointer-events-auto max-h-72 w-full max-w-md overflow-y-auto rounded-lg border border-gray-700 bg-gray-900/95 p-3 shadow-xl">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium text-white">
+          Dropped Files ({droppedFiles.length})
+        </h3>
+        <button
+          type="button"
+          onClick={() => setDroppedFiles([])}
+          className="text-xs text-gray-400 transition-colors hover:text-white"
+        >
+          Clear
+        </button>
+      </div>
+      <div className="space-y-2">
+        {droppedFiles.map((file, index) => (
+          <FilePreview
+            key={`${file.name}-${file.lastModified}-${index}`}
+            file={file}
+            onRemove={() => handleRemoveFile(index)}
+            onLoad={() => void handleFileLoad(file)}
+          />
+        ))}
+      </div>
+    </div>
+  ) : null;
   
   return (
     <MainLayout
@@ -1527,6 +1598,12 @@ function App() {
 
             </>
           )}
+
+          {hasModel && droppedFileTray && (
+            <div className="absolute right-4 top-20 z-20">
+              {droppedFileTray}
+            </div>
+          )}
         </div>
         
         {/* Drop Zone Overlay (when no model is loaded) */}
@@ -1538,22 +1615,7 @@ function App() {
                 disabled={!isInitialized}
               />
               
-              {/* File Previews */}
-              {droppedFiles.length > 0 && (
-                <div className="mt-6 space-y-3">
-                  <h3 className="text-lg font-medium text-white mb-4">
-                    Dropped Files ({droppedFiles.length})
-                  </h3>
-                  {droppedFiles.map((file, index) => (
-                    <FilePreview
-                      key={index}
-                      file={file}
-                      onRemove={() => handleRemoveFile(index)}
-                      onLoad={() => handleFileLoad(file)}
-                    />
-                  ))}
-                </div>
-              )}
+              {droppedFileTray && <div className="mt-6">{droppedFileTray}</div>}
             </div>
           </div>
         )}

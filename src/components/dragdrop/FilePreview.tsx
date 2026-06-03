@@ -1,4 +1,5 @@
 import React from 'react';
+import { getFileExtension, getFileTypeFromExtension } from '../../constants/formats';
 
 export interface FilePreviewProps {
   file: File;
@@ -7,19 +8,9 @@ export interface FilePreviewProps {
 }
 
 export const FilePreview: React.FC<FilePreviewProps> = ({ file, onRemove, onLoad }) => {
-  const getFileType = (filename: string): 'model' | 'animation' | 'unknown' => {
-    const ext = filename.toLowerCase().split('.').pop();
-    const extension = ext ? `.${ext}` : '';
-    if (['.vrm', '.glb', '.gltf', '.fbx'].includes(extension)) {
-      return 'model';
-    }
-    if (['.bvh', '.vrma'].includes(extension)) {
-      return 'animation';
-    }
-    return 'unknown';
-  };
-
-  const fileType = getFileType(file.name);
+  const extension = getFileExtension(file.name).toLowerCase();
+  const fileType = getFileTypeFromExtension(extension) ?? 'unknown';
+  const isAmbiguousFbx = extension === '.fbx';
   const fileSize = (file.size / (1024 * 1024)).toFixed(2);
 
   const getIcon = () => {
@@ -63,8 +54,14 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ file, onRemove, onLoad
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-white truncate">{file.name}</p>
           <div className="flex items-center space-x-2 mt-1">
-            <span className="text-xs text-gray-400">{getTypeLabel()}</span>
+            <span className="text-xs text-gray-400">{isAmbiguousFbx ? 'Model / animation' : getTypeLabel()}</span>
             <span className="text-xs text-gray-600">•</span>
+            {extension && (
+              <>
+                <span className="text-xs uppercase text-gray-400">{extension.replace('.', '').toUpperCase()}</span>
+                <span className="text-xs text-gray-600">•</span>
+              </>
+            )}
             <span className="text-xs text-gray-400">{fileSize} MB</span>
           </div>
         </div>
