@@ -15,6 +15,16 @@ import { initializeSceneManager, disposeSceneManager } from '../../core/three/sc
 import { captureThumbnail } from '../../utils/thumbnailUtils';
 import { useThumbnailCapture } from '../../hooks/useThumbnailCapture';
 
+type ViewerDebugStats = {
+  meshes: number;
+  vertices: number;
+  triangles: number;
+  materials: number;
+  texturedMaterials: number;
+  size: THREE.Vector3;
+  cameraDistance: number | null;
+};
+
 /**
  * VRMViewer imperative handle
  */
@@ -85,6 +95,58 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const [isWireframe, setIsWireframe] = useState<boolean>(false);
   const [previousModelUuid, setPreviousModelUuid] = useState<string | null>(null);
+  const [debugStats, setDebugStats] = useState<ViewerDebugStats | null>(null);
+
+  const collectDebugStats = useCallback((model: typeof currentModel) => {
+    if (!model) {
+      setDebugStats(null);
+      return;
+    }
+
+    const stats: ViewerDebugStats = {
+      meshes: 0,
+      vertices: 0,
+      triangles: 0,
+      materials: 0,
+      texturedMaterials: 0,
+      size: new THREE.Vector3(),
+      cameraDistance: null,
+    };
+    const seenMaterials = new Set<THREE.Material>();
+
+    model.scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      stats.meshes += 1;
+      const geometry = object.geometry;
+      const position = geometry?.getAttribute('position');
+      if (position) stats.vertices += position.count;
+      if (geometry?.index) {
+        stats.triangles += Math.floor(geometry.index.count / 3);
+      } else if (position) {
+        stats.triangles += Math.floor(position.count / 3);
+      }
+
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => {
+        if (!material || seenMaterials.has(material)) return;
+        seenMaterials.add(material);
+        stats.materials += 1;
+        if ('map' in material && material.map) {
+          stats.texturedMaterials += 1;
+        }
+      });
+    });
+
+    const box = new THREE.Box3().setFromObject(model.scene);
+    if (!box.isEmpty()) {
+      box.getSize(stats.size);
+      const center = box.getCenter(new THREE.Vector3());
+      const camera = cameraManager?.getCamera();
+      stats.cameraDistance = camera ? camera.position.distanceTo(center) : null;
+    }
+
+    setDebugStats(stats);
+  }, []);
 
   const prepareModelForPreview = useCallback((model: typeof currentModel) => {
     if (!model) return;
@@ -142,8 +204,9 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
     }
 
     cameraManager?.frameObject(model.scene);
+    collectDebugStats(model);
     return true;
-  }, []);
+  }, [collectDebugStats]);
 
   /**
    * Apply visibility state to model
@@ -370,10 +433,27 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
   useEffect(() => {
     if (!isInitialized || !sceneRef.current) return;
 
-    const clearSceneModels = () => {
+    const disposeSceneObject = (child: THREE.Object3D) => {
+      child.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(mat => mat.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
+    };
+
+    const clearSceneModels = (preserve?: THREE.Object3D) => {
       const childrenToRemove: THREE.Object3D[] = [];
       sceneRef.current!.children.forEach(child => {
-        if (!(child instanceof THREE.Light)) {
+        if (!(child instanceof THREE.Light) && child !== preserve) {
           childrenToRemove.push(child);
         }
       });
@@ -381,25 +461,11 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
       // Remove and dispose of all non-light children
       childrenToRemove.forEach(child => {
         sceneRef.current!.remove(child);
-        // Dispose geometries and materials to prevent memory leaks
-        child.traverse((object) => {
-          if (object instanceof THREE.Mesh) {
-            if (object.geometry) {
-              object.geometry.dispose();
-            }
-            if (object.material) {
-              if (Array.isArray(object.material)) {
-                object.material.forEach(mat => mat.dispose());
-              } else {
-                object.material.dispose();
-              }
-            }
-          }
-        });
+        disposeSceneObject(child);
       });
     };
 
-    clearSceneModels();
+    clearSceneModels(currentModel?.scene);
 
     if (currentModel) {
       // Add VRM to scene
@@ -427,6 +493,7 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
         if (secondFrame !== null) cancelAnimationFrame(secondFrame);
       };
     }
+    setDebugStats(null);
   }, [currentModel, isInitialized, normalizeAndFrameModel, onVRMLoaded, prepareModelForPreview]);
 
   /**
@@ -569,6 +636,23 @@ export const VRMViewer = forwardRef<VRMViewerHandle, VRMViewerProps>(({
                 Loop
               </span>
             )}
+          </div>
+        </div>
+      )}
+
+      {currentModel && debugStats && !vrmLoading && !modelError && (
+        <div className="absolute bottom-28 right-4 max-w-xs rounded bg-black/60 px-3 py-2 text-[11px] leading-5 text-white">
+          <div>
+            Meshes {debugStats.meshes} · Tris {debugStats.triangles.toLocaleString()}
+          </div>
+          <div>
+            Materials {debugStats.materials} · Textured {debugStats.texturedMaterials}
+          </div>
+          <div>
+            Size {debugStats.size.x.toFixed(2)} × {debugStats.size.y.toFixed(2)} × {debugStats.size.z.toFixed(2)}
+          </div>
+          <div>
+            Camera {debugStats.cameraDistance === null ? 'n/a' : debugStats.cameraDistance.toFixed(2)}
           </div>
         </div>
       )}
